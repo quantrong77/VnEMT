@@ -29,6 +29,7 @@ def main() -> None:
     cmd = ([uv, "build", "--wheel", "-q", "-o", str(out), str(ROOT)] if uv else
            [sys.executable, "-m", "pip", "wheel", "--no-deps", "-q", "-w", str(out), str(ROOT)])
     subprocess.run(cmd, check=True)
+    (out / ".gitignore").unlink(missing_ok=True)  # uv build ignores its output dir ("*")
     wheel = next(out.glob("vnemt-*.whl")).name
     cases = []
     for f in sorted((ROOT / "cases").glob("*.yaml")):
