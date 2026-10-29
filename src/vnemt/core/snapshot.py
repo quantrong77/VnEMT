@@ -59,6 +59,15 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
         net = {name: np.asarray(f[name][()], dtype=float) for name in _NET}
         dev = DeviceState(**{name: np.asarray(f["dev"][name][()]) for name in DeviceState.FIELDS})
         ctrl = {name: np.asarray(f["ctrl"][name][()], dtype=float) for name in f["ctrl"]}
+        # event elements (appended after the base circuit) start in their initial state
+        n_v, n_b = len(solver.node_names), len(solver.branches)
+        net["v"] = np.concatenate([net["v"], np.zeros(n_v - len(net["v"]))])
+        net["i_b"] = np.concatenate([net["i_b"], np.zeros(n_b - len(net["i_b"]))])
+        net["v_b"] = np.concatenate([net["v_b"], np.zeros(n_b - len(net["v_b"]))])
+        init = solver.switches.initial_state()
+        k = len(dev.on)
+        dev = DeviceState(**{name: np.concatenate([getattr(dev, name), getattr(init, name)[k:]])
+                             for name in DeviceState.FIELDS})
         return SolverState(
             t=float(f.attrs["t"]),
             step=int(f.attrs["step"]),

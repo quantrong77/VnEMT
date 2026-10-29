@@ -70,10 +70,11 @@ def test_missing_file() -> None:
         load_case("khong_co.yaml")
 
 
-def test_pending_sections_are_refused_at_run_time() -> None:
-    case = vnemt.loads(MINIMAL + "events:\n  - {t_s: 0.1, type: ac_fault}\n")
-    with pytest.raises(CaseError, match="M3"):
-        case.run()
+def test_incomplete_event_is_reported_once() -> None:
+    with pytest.raises(CaseError) as exc:
+        parse_case(MINIMAL + "events:\n  - {t_s: 0.1, type: ac_fault}\n")
+    msg = str(exc.value)
+    assert msg.count("events[0]: thiếu khóa bắt buộc 'location', 'duration_ms'") == 1
 
 
 def test_unknown_output_signal() -> None:

@@ -37,6 +37,7 @@ class Element:
     kind: ElementKind
     nodes: tuple[str, ...]
     params: Mapping[str, Param] = field(default_factory=dict)
+    origin: str = "case"  # "event": generated from the event schedule (not in snapshots)
 
     def p(self, key: str, default: float = 0.0) -> float:
         """Scalar parameter."""
@@ -68,6 +69,11 @@ class Netlist:
                 if not is_ground(n):
                     seen.setdefault(n, None)
         return list(seen)
+
+    def base_nodes(self) -> set[str]:
+        """Nodes used by non-event elements."""
+        return {x for el in self.elements if el.origin != "event" for x in el.nodes
+                if not is_ground(x)}
 
     def element(self, eid: str) -> Element:
         for el in self.elements:

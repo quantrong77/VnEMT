@@ -1,0 +1,8 @@
+# TC-09: 50 fault cases from one snapshot - dip depth x point on wave (10 instants over
+# one cycle), CFPREV enabled
+sweep:
+  snapshot_t_s: 1.0
+  t_end_s: 1.5
+  parameters:
+    events.0.depth_pct: [10, 15, 20, 25, 30]
+    events.0.t_s: [1.1, 1.102, 1.104, 1.106, 1.108, 1.110, 1.112, 1.114, 1.116, 1.118]

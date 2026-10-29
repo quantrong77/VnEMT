@@ -126,7 +126,8 @@ def schema_errors(data: Any) -> list[str]:
     """Return all schema violations of ``data`` as Vietnamese messages, sorted by key path."""
     validator = Draft202012Validator(case_schema())
     errors = sorted(validator.iter_errors(data), key=lambda e: [str(p) for p in e.absolute_path])
-    return [f"{format_path(e.absolute_path)}: {_translate(e)}" for e in errors]
+    msgs = [f"{format_path(e.absolute_path)}: {_translate(e)}" for e in errors]
+    return list(dict.fromkeys(msgs))  # identical messages from several schema branches
 
 
 def _semantic_errors(data: dict[str, Any]) -> list[str]:

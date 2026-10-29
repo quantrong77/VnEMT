@@ -23,11 +23,10 @@ from vnemt.model.grid import Grid, grid_from_case
 from vnemt.model.netlist import Netlist, build_netlist
 from vnemt.results import Result
 from vnemt.systems.builder import build_system
+from vnemt.systems.events import ExpandedEvents, expand_events
 
 # Sections accepted by the schema but not yet simulated, with the milestone that adds them.
-_PENDING_SECTIONS = {
-    "events": "M3",
-}
+_PENDING_SECTIONS: dict[str, str] = {}
 _SUPPORTED_FORMATS = ("hdf5", "csv", "comtrade", "pscad_out", "mat")
 
 
@@ -92,19 +91,25 @@ class Case:
         """System-level model (shared with the phasor core)."""
         return grid_from_case(self.data)
 
-    def netlist(self) -> Netlist:
-        """User circuit elements plus the expansion of the system sections."""
+    def build(self) -> tuple[Netlist, list[Controller], ExpandedEvents]:
+        """Netlist (user circuit, system expansion, then event elements), controllers
+        (generated station controls, then the user ``controls``) and expanded events."""
         net = build_netlist(self.data)
         grid = self.grid()
-        if not grid.empty:
-            net.elements.extend(build_system(grid)[0])
-        return net
+        events = self.data.get("events", [])
+        pre = expand_events([e for e in events if e["type"] == "setpoint"], grid)
+        gen_els, gen_ctrl = ([], []) if grid.empty else build_system(grid, pre.setpoints)
+        net.elements.extend(gen_els)
+        valves = {e.id: (e.nodes[0], e.nodes[1]) for e in net.elements if e.kind == "T"}
+        ev = expand_events(events, grid, valves)
+        net.elements.extend(ev.elements)
+        return net, gen_ctrl + build_controllers(self.data.get("controls", [])), ev
+
+    def netlist(self) -> Netlist:
+        return self.build()[0]
 
     def controllers(self) -> list[Controller]:
-        """Generated station controls first, then the user ``controls`` in order."""
-        grid = self.grid()
-        gen = [] if grid.empty else build_system(grid)[1]
-        return gen + build_controllers(self.data.get("controls", []))
+        return self.build()[1]
 
     def resolve(self, path: str) -> Path:
         """Resolve a path given in the case relative to the case file's directory."""
@@ -117,13 +122,18 @@ class Case:
         """Simulate the case and return the result with provenance metadata."""
         self._check_supported()
         sp = self.solver_params
-        solver = EmtSolver(self.netlist(), dt=sp["dt_us"] * 1e-6, cda=bool(sp["cda"]))
+        net, controllers, ev = self.build()
+        solver = EmtSolver(net, dt=sp["dt_us"] * 1e-6, cda=bool(sp["cda"]),
+                           modulations=ev.modulations, misfires=ev.misfires)
         out = self.data.get("outputs", {})
         sig = out.get("signals", "all")
         init = self.data["case"].get("init", {})
         start = None
         if init.get("mode") == "snapshot":
             start = load_snapshot(solver, self.resolve(init["file"]))
+            if ev.first_time <= start.t:
+                raise CaseError(f"sự kiện đầu tiên (t = {ev.first_time} s) phải sau thời điểm "
+                                f"snapshot (t = {start.t} s)", path="events")
         snap = self.data["case"].get("snapshot")
         res = simulate(
             solver,
@@ -132,7 +142,7 @@ class Case:
             decimate=int(out.get("decimate", 1)),
             start=start,
             snapshot=(float(snap["t_s"]), self.resolve(snap["file"])) if snap else None,
-            controllers=self.controllers(),
+            controllers=controllers,
         )
         res.meta = self.provenance()
         res.meta["lu_factorizations"] = solver.stats.lu_factorizations

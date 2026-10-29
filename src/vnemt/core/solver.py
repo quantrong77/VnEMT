@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -89,20 +90,30 @@ class _Sources:
     freq: FloatArray  # 0 => DC
     phase: FloatArray  # rad
     ramp: FloatArray  # s, 0 => step
+    mods: list[tuple[int, float, float, float]] = field(default_factory=list)
+    # amplitude modulations (source index, t_start, t_end, factor): controlled dips (F4-02)
 
     @classmethod
-    def from_elements(cls, els: list[Element]) -> _Sources:
+    def from_elements(cls, els: list[Element],
+                      mods: Mapping[str, list[tuple[float, float, float]]] | None = None
+                      ) -> _Sources:
         amp = np.array([el.p(_AMP_KEY[el.kind]) for el in els], dtype=float)
         freq = np.array([el.p("f_Hz") for el in els], dtype=float)
         phase = np.deg2rad(np.array([el.p("phase_deg") for el in els], dtype=float))
         ramp = np.array([el.p("ramp_s") for el in els], dtype=float)
-        return cls(amp, freq, phase, ramp)
+        idx = {el.id: i for i, el in enumerate(els)}
+        ml = [(idx[sid], t0, t1, k) for sid, w in (mods or {}).items() if sid in idx
+              for t0, t1, k in w]
+        return cls(amp, freq, phase, ramp, ml)
 
     def __call__(self, t: float) -> FloatArray:
         with np.errstate(divide="ignore", invalid="ignore"):
             r = np.where(self.ramp > 0.0, np.minimum(t / self.ramp, 1.0), 1.0)
         wave = np.where(self.freq > 0.0, np.sin(2.0 * np.pi * self.freq * t + self.phase), 1.0)
         out: FloatArray = self.amp * r * wave
+        for i, t0, t1, k in self.mods:
+            if t0 <= t < t1:
+                out[i] *= k
         return out
 
 
@@ -167,14 +178,24 @@ class EmtSolver:
         Time step in seconds.
     cda : bool
         Critical Damping Adjustment at start-up and after every topology change.
+    modulations : mapping, optional
+        ``{source id: [(t_start, t_end, factor), ...]}`` amplitude modulation of voltage or
+        current sources (controlled voltage dips, F4-02); not part of the fingerprint.
+    misfires : mapping, optional
+        ``{thyristor id: t}``: the first gate window starting at or after ``t`` is dropped
+        (misfire, F4-04).
     """
 
-    def __init__(self, netlist: Netlist, dt: float, cda: bool = True) -> None:
+    def __init__(self, netlist: Netlist, dt: float, cda: bool = True,
+                 modulations: Mapping[str, list[tuple[float, float, float]]] | None = None,
+                 misfires: Mapping[str, float] | None = None) -> None:
         if dt <= 0:
             raise SolverError(f"bước thời gian dt phải > 0, nhận được {dt}")
         self.netlist = netlist
         self.dt = dt
         self.cda = cda
+        self._mods = dict(modulations or {})
+        self._misfire_spec = dict(misfires or {})
         self.node_names = netlist.nodes
         self.node_index = {n: i for i, n in enumerate(self.node_names)}
         self.events: list[SwitchEvent] = []
@@ -242,10 +263,18 @@ class EmtSolver:
         self._Ycoup = sp.csr_matrix(([c[2] for c in coup], (cr, cc)), shape=(nb, nb))
         self._Yfix = (sp.diags(self.g_base) + self._Ycoup).tocsr()
         self._vn_pos: IntArray = np.flatnonzero(self.kind == K_VN).astype(np.int64)
-        self._vn_src = _Sources.from_elements([owner[i] for i in self._vn_pos])
+        self._vn_src = _Sources.from_elements([owner[i] for i in self._vn_pos], self._mods)
         sw_pos = np.flatnonzero(self.kind == K_SW)
         self.switches = SwitchSet.from_elements([owner[i] for i in sw_pos], list(sw_pos))
         self._sw_index = {sid: j for j, sid in enumerate(self.switches.ids)}
+        unknown = [v for v in self._misfire_spec if v not in self._sw_index]
+        if unknown:
+            raise SolverError(f"sự kiện misfire: không có van {', '.join(unknown)}")
+        self._misfire = {self._sw_index[v]: t for v, t in self._misfire_spec.items()}
+        base_nodes = self.netlist.base_nodes()
+        self.n_base_nodes = sum(1 for nd in self.node_names if nd in base_nodes)
+        self.n_base_branches = sum(1 for e in owner if e.origin != "event")
+        self.n_base_switches = sum(1 for i in sw_pos if owner[i].origin != "event")
 
         # node-branch incidence (ground column dropped)
         n = len(self.node_names)
@@ -273,7 +302,7 @@ class EmtSolver:
                 )
             known[node] = (j, sign)
         self.ideal_v = ideal_v
-        self._iv_src = _Sources.from_elements(ideal_v)
+        self._iv_src = _Sources.from_elements(ideal_v, self._mods)
         self.known_nodes: IntArray = np.array(sorted(known), dtype=np.int64)
         self._known_src: IntArray = np.array(
             [known[n][0] for n in self.known_nodes], dtype=np.int64
@@ -281,7 +310,7 @@ class EmtSolver:
         self._known_sign: FloatArray = np.array([known[n][1] for n in self.known_nodes])
 
         self.isrc = isrc
-        self._is_src = _Sources.from_elements(isrc)
+        self._is_src = _Sources.from_elements(isrc, self._mods)
         self._is_k = np.array([self._idx(e.nodes[0]) for e in isrc], dtype=np.int64)
         self._is_m = np.array([self._idx(e.nodes[1]) for e in isrc], dtype=np.int64)
 
@@ -358,10 +387,11 @@ class EmtSolver:
         return top
 
     def fingerprint(self) -> str:
-        """SHA-256 of the netlist and time step; snapshots are only valid for the same value."""
+        """SHA-256 of the netlist without event elements, and of the time step; snapshots are
+        only valid for the same value."""
         desc = [
             [e.id, e.kind, list(e.nodes), sorted((k, v) for k, v in e.params.items())]
-            for e in self.netlist.elements
+            for e in self.netlist.elements if e.origin != "event"
         ]
         text = json.dumps({"dt": self.dt, "cda": self.cda, "elements": desc}, sort_keys=True)
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -377,6 +407,13 @@ class EmtSolver:
         """Set the gate window of thyristor ``j`` (index from :meth:`switch_index`)."""
         if self.switches.dev[j] != DEV_THYRISTOR:
             raise SolverError(f"'{self.switches.ids[j]}' không phải thyristor")
+        t_mf = self._misfire.get(j)
+        if t_mf is not None and t_on >= t_mf > st.dev.fire_on[j]:
+            # misfire: the first window after t_mf is dropped (an empty window marks it used)
+            st.dev.fire_on[j] = t_on
+            st.dev.fire_off[j] = t_on - 1.0
+            self.markers.append((t_on, self.switches.ids[j], "misfire"))
+            return
         st.dev.fire_on[j] = t_on
         st.dev.fire_off[j] = t_off
 

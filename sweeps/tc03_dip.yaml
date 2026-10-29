@@ -1,0 +1,7 @@
+# TC-03: inverter AC voltage dip 10-30 % with and without CFPREV (6 runs from one snapshot)
+sweep:
+  snapshot_t_s: 1.0
+  t_end_s: 1.6
+  parameters:
+    events.0.depth_pct: [10, 20, 30]
+    converter_stations.1.control.cfprev: [false, true]

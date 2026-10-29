@@ -176,8 +176,9 @@ Gõ `@` trong khung Claude Code rồi chọn agent, ví dụ:
 ```powershell
 vnemt validate cases/tc02_cigre_lcc.yaml      # kiểm tra file case theo schema
 vnemt run cases/tc02_cigre_lcc.yaml           # chạy mô phỏng
-vnemt run cases/tc03_inv_dip.yaml --sweep sweeps/dip_depth.yaml   # quét nhiều lần chạy
-vnemt report results/tc03_inv_dip/            # tạo báo cáo Markdown/HTML
+vnemt sweep cases/tc03_inv_dip.yaml sweeps/tc03_dip.yaml   # quét nhiều lần chạy từ snapshot
+vnemt convert results/tc01_bridge6/tc01_bridge6.h5 out.cfg --rev 2013   # đổi định dạng
+vnemt compare ref.cfg results/tc01_bridge6/tc01_bridge6.h5                # so sánh dạng sóng
 ```
 
 ### 4.2 File case

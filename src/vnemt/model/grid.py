@@ -82,6 +82,23 @@ class LccControl:
     margin_pu: float = 0.1
     kp_gamma: float = 0.7506  # deg per deg (CIGRE benchmark, to be checked)
     ki_gamma: float = 30.0  # 1/s: Ti = 25 ms (VnEMT; the benchmark uses about 54 ms)
+    gamma_cf_deg: float = 7.2  # CF criterion: 360 f t_q with t_q = 400 us (illustrative)
+    # force retard / restart after a DC line fault (F4-07)
+    force_retard: bool = False  # enable for DC line fault studies (see docs/design/M3.md)
+    fr_u_det: float = 0.25
+    fr_t_det: float = 0.005
+    fr_vac_min: float = 0.7
+    fr_arm_ud: float = 0.8
+    fr_alpha_deg: float = 140.0
+    fr_t_deion: float = 0.15
+    fr_n_restart: int = 3
+    # commutation failure prevention (F4-08), VnEMT design values
+    cfprev: bool = False
+    cfprev_k_ab: float = 120.0  # deg per pu of alpha-beta voltage drop
+    cfprev_k_0: float = 200.0  # deg per pu of zero-sequence voltage
+    cfprev_u_th: float = 0.05
+    cfprev_max_deg: float = 30.0
+    cfprev_t_dec: float = 0.1
 
 
 @dataclass(frozen=True)

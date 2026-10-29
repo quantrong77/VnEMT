@@ -114,8 +114,13 @@ def _dc_line(ln: DcLine) -> list[Element]:
     return els
 
 
-def build_system(grid: Grid) -> tuple[list[Element], list[Controller]]:
-    """Circuit elements and ordered controllers of the whole system."""
+def build_system(grid: Grid, setpoints: dict[str, list[tuple[float, str, float, float]]]
+                 | None = None) -> tuple[list[Element], list[Controller]]:
+    """Circuit elements and ordered controllers of the whole system.
+
+    ``setpoints`` maps a station id to its set-point changes (``setpoint`` events).
+    """
+    setpoints = setpoints or {}
     els: list[Element] = []
     for sid in grid.ac_systems:
         els += _ac_system(grid, sid)
@@ -133,16 +138,18 @@ def build_system(grid: Grid) -> tuple[list[Element], list[Controller]]:
         f = grid.ac_systems[st.ac_system].f_Hz
         pll.append(PllSrf(f"{st.id}_PLL", va, vb, vc, f0_Hz=f))
         id_sig, ud_sig = f"{st.id}_Ls.I", f"{st.id}_DC.V"
+        v_n = grid.ac_systems[st.ac_system].U_kV * 1e3 * math.sqrt(2.0 / 3.0)
         if st.role == "rectifier":
             ctrl.append(LccRectifierControl(f"{st.id}_CTRL", id_sig, ud_sig, ib, ub,
-                                            st.control))
+                                            st.control, vm_signal=f"{st.id}_PLL.Vm", V_n=v_n,
+                                            setpoints=setpoints.get(st.id)))
         else:
             assert rec is not None
             groups = [([f"{st.id}_{b}{i}" for i in range(1, 7)], 0.0 if b == "Y" else 30.0)
                       for b in bridges]
             ctrl.append(LccInverterControl(f"{st.id}_CTRL", id_sig, ud_sig,
                                            f"{rec.id}_CTRL.Id_ord", f"{st.id}_PLL", groups,
-                                           ib, ub, st.control))
+                                           ib, ub, st.control, bus=(va, vb, vc), V_n=v_n))
         for b in bridges:
             ids = [f"{st.id}_{b}{i}" for i in range(1, 7)]
             epc.append(Epc6(f"{st.id}_EPC{b}", f"{st.id}_PLL", ids,

@@ -1,6 +1,6 @@
 """Command line interface ``vnemt`` (SPEC-v0.1 section 4.1, IO-01...IO-07).
 
-Commands: ``run``, ``validate``, ``convert``, ``compare``; ``report`` comes with M3b.
+Commands: ``run``, ``validate``, ``convert``, ``compare``, ``sweep``.
 """
 
 from __future__ import annotations
@@ -98,9 +98,16 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_report(args: argparse.Namespace) -> int:
-    print("Lệnh 'report' chưa triển khai (dự kiến mốc M3b).")
-    return 2
+def cmd_sweep(args: argparse.Namespace) -> int:
+    from vnemt.studies.sweep import load_sweep, run_sweep, to_markdown
+
+    case = Path(args.case)
+    out = Path(args.output) if args.output else Path("results") / f"{case.stem}_sweep"
+    t0 = time.perf_counter()
+    rows = run_sweep(case, load_sweep(args.sweep), out, workers=args.jobs)
+    print(to_markdown(rows))
+    print(f"{len(rows)} lần chạy, {time.perf_counter() - t0:.1f} s -> {out / 'sweep.csv'}")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,9 +145,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--csv", help="ghi bảng so sánh ra CSV")
     p.set_defaults(func=cmd_compare)
 
-    p = sub.add_parser("report", help="tạo báo cáo (mốc M3b)")
-    p.add_argument("path")
-    p.set_defaults(func=cmd_report)
+    p = sub.add_parser("sweep", help="chạy nhiều lần từ snapshot, bảng chỉ số FRT (S-10)")
+    p.add_argument("case", help="file case YAML (có mục events)")
+    p.add_argument("sweep", help="file quét YAML (mục sweep)")
+    p.add_argument("-o", "--output", help="thư mục kết quả (mặc định results/<case>_sweep)")
+    p.add_argument("-j", "--jobs", type=int, help="số tiến trình (mặc định: số nhân CPU)")
+    p.set_defaults(func=cmd_sweep)
     return ap
 
 

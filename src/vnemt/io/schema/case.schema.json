@@ -414,6 +414,52 @@
                     }
                   }
                 ]
+              },
+              "gamma_cf_deg": {
+                "type": "number"
+              },
+              "fr_u_det": {
+                "type": "number"
+              },
+              "fr_t_det": {
+                "type": "number"
+              },
+              "fr_vac_min": {
+                "type": "number"
+              },
+              "fr_arm_ud": {
+                "type": "number"
+              },
+              "fr_alpha_deg": {
+                "type": "number"
+              },
+              "fr_t_deion": {
+                "type": "number"
+              },
+              "cfprev_k_ab": {
+                "type": "number"
+              },
+              "cfprev_k_0": {
+                "type": "number"
+              },
+              "cfprev_u_th": {
+                "type": "number"
+              },
+              "cfprev_max_deg": {
+                "type": "number"
+              },
+              "cfprev_t_dec": {
+                "type": "number"
+              },
+              "force_retard": {
+                "type": "boolean"
+              },
+              "cfprev": {
+                "type": "boolean"
+              },
+              "fr_n_restart": {
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
@@ -482,11 +528,312 @@
     "events": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": [
+          "type",
+          "t_s"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "ac_fault",
+              "ac_dip",
+              "dc_fault",
+              "valve_short",
+              "misfire",
+              "setpoint"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "ac_fault"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "location",
+                "duration_ms"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "location": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "3ph",
+                    "1ph",
+                    "2ph",
+                    "2phg"
+                  ]
+                },
+                "r_ohm": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "x_ohm": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "f_Hz": {
+                  "$ref": "#/$defs/positive"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "ac_dip"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "location",
+                "depth_pct",
+                "duration_ms"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "depth_pct": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "dc_fault"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "line",
+                "duration_ms"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "r_ohm": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "x_ohm": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "valve_short"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "valve",
+                "duration_ms"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "valve": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "misfire"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "valve"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "valve": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "setpoint"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "station",
+                "param",
+                "value"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "t_s": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "type": true,
+                "duration_ms": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "note": {
+                  "type": "string"
+                },
+                "station": {
+                  "type": "string"
+                },
+                "param": {
+                  "enum": [
+                    "Id_ref_pu"
+                  ]
+                },
+                "value": {
+                  "type": "number"
+                },
+                "ramp_s": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "criteria": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "recovery_90pct_ms": {
+          "$ref": "#/$defs/positive"
+        },
+        "max_cf": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_Id_pu": {
+          "$ref": "#/$defs/positive"
+        },
+        "max_Ud_pu": {
+          "$ref": "#/$defs/positive"
+        },
+        "min_Uac_pu": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_Uac_pu": {
+          "$ref": "#/$defs/positive"
+        }
+      }
     },
     "outputs": {
       "type": "object",

@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau M3a.
+Cập nhật lần cuối: 29/10/2026 — sau mốc M3.
 
 ## Lõi giải và chất lượng
 
@@ -18,7 +18,7 @@ Cập nhật lần cuối: 29/10/2026 — sau M3a.
 | S-07 | Phân vùng | — | — | Chưa (v0.2) |
 | S-08 | Khởi tạo: (a) từ 0 có ramp; (b) trào lưu; (c) snapshot | `core/solver.py` (a), `core/snapshot.py` (c) | `::test_ramp_source`, `test_snapshot.py::test_case_level_snapshot_roundtrip` | Một phần — (b) cần trào lưu (F6-07); tiêu chí xác lập ≤ 0,5 s kiểm ở TC-02 |
 | S-09 | Snapshot, chạy tiếp sai lệch < 1e-9 | `core/snapshot.py` | `test_snapshot.py::test_continue_from_snapshot_matches_continuous_run` | Đạt (trùng từng bit) |
-| S-10 | Multiple run | — | — | Chưa (M3) |
+| S-10 | Multiple run song song từ snapshot | `studies/sweep.py`, `vnemt sweep` | `tests/validation/test_tc03_tc09.py::test_tc09_fifty_faults_from_snapshot`, `tests/systems/test_events.py::test_sweep_helpers` | Đạt — 50 lần chạy khoảng 3,5 phút (6 tiến trình), không phụ thuộc số tiến trình |
 | S-11 | Van hai trạng thái R_on/R_off, tùy chọn V_T + R_on | `core/switching.py` | `test_switching.py` | Đạt |
 | S-12 | Thyristor: xung, I_H, t_q, phát hiện mở lại | `core/switching.py`, `EmtSolver.fire` | `tests/core/test_thyristor.py`, `test_tc01_bridge6.py::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Đạt |
 | S-13 | IGBT + diode ngược | `core/switching.py` (diode) | `test_switching.py::test_diode_bridge_*` | Một phần — diode xong, IGBT ở M5 |
@@ -38,9 +38,23 @@ Cập nhật lần cuối: 29/10/2026 — sau M3a.
 | F1-L02 | Cầu 12 xung, MBA Y/Y và Y/Δ, không còn bậc 5, 7 | `components/transformer.py`, `systems/builder.py` | `tests/core/test_transformer.py`, `tests/systems/test_builder.py::test_twelve_pulse_cancels_5th_and_7th_harmonics` | Đạt — bậc 5, 7 < 1 % I1; Ud hai cầu khớp công thức < 1 % |
 | F1-L03 | EPC + PLL, lệch khoảng cách xung < 0,1° | `control/pll.py`, `control/epc.py` | `test_blocks_pll.py::test_pll_locks_to_phase_and_frequency`, `test_tc01_alpha_sweep`, `::test_tc01_firing_independent_of_time_step`, `::test_tc01_deblock_without_overvoltage` | Đạt — lệch đo được < 0,001°, không phụ thuộc Δt |
 | F1-L04 | Đo μ, γ từng van; γ khớp công thức < 0,5° | `analysis/lcc.py` | `test_tc01_alpha_sweep` | Đạt — γ sai < 0,04° với α ≥ 120°. γ thực tế bị vết khía chuyển mạch chặn khi γ > ~60° − μ, nên công thức chỉ áp dụng cho nghịch lưu |
-| F1-L05 | Phát hiện sự cố chuyển mạch | `core/switching.py` (marker `cf`) | `::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Một phần — phát hiện qua t_q; đếm theo trạm và FRT ở M3 |
+| F1-L05 | Phát hiện sự cố chuyển mạch (t_q và γ < γ_cf) | `core/switching.py`, `control/lcc.py`, `analysis/frt.py` | `test_tc01_bridge6.py::test_tc01_commutation_failure_when_tq_exceeds_extinction_time`, `test_tc03_tc09.py` | Đạt — đếm theo van, theo đợt, theo trạm |
 | F1-L06 | Kháng san bằng, lọc DC | `systems/builder.py` | `test_builder.py` | Một phần — kháng san bằng xong; lọc DC ở M4 |
 | F3-01…F3-03 | CC, CEA vòng kín (γ theo IEC 60633), biên dòng, VDCOL, giới hạn | `control/lcc.py`, `control/blocks.py` | `test_builder.py::test_vdcol_and_ramp`, `tests/control/test_blocks_pll.py`, `tests/validation/test_tc02_cigre.py` | Một phần — điểm làm việc CC/CEA đạt (TC-02); kiểm thử hoán đổi vai trò khi U_AC chỉnh lưu giảm cần lịch sự kiện (M3) |
+
+## Sự cố và FRT (F4)
+
+| Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
+| --- | --- | --- | --- | --- |
+| F4-01 | Sự cố AC 1ph/2ph/2phg/3ph, R và X, cắt tại dòng qua 0 | `systems/events.py` | `tests/systems/test_events.py::test_ac_fault_expansion_kinds`, `::test_fault_from_snapshot_matches_continuous_run` | Đạt |
+| F4-02 | Sụt áp có kiểm soát | `systems/events.py`, `core/solver.py` (bộ nhân nguồn) | `::test_source_modulation_dips_amplitude`, TC-03 | Đạt |
+| F4-03 | Sự cố DC cực–đất tại vị trí bất kỳ | `systems/events.py` | `::test_dc_fault_picks_nearest_line_node` | Một phần — đặt tại nút gần nhất của mô hình đường dây; cực–cực ở M4 (lưỡng cực) |
+| F4-04 | Ngắn mạch van, kích nhầm | `systems/events.py`, `EmtSolver.fire` | `::test_misfire_drops_one_pulse` | Một phần — ngắn mạch van và mất xung xong; ngắn mạch qua cầu dùng `ac_fault` với danh sách nút |
+| F4-05 | Sự cố trong MMC | — | — | Chưa (M5) |
+| F4-06 | Lịch sự kiện | `systems/events.py`, schema `events` | `::test_dip_setpoint_and_misfire_expansion` | Đạt (đóng cắt, sự cố, điểm đặt Id_ref); đóng cắt lọc ở M4 |
+| F4-07 | Force retard, khử ion, khởi động lại | `control/lcc.py::LccRectifierControl` | thử thủ công (docs/design/M3.md 3.2) | Một phần — chạy đúng chuỗi; phát hiện không phân biệt CF nghịch lưu nên mặc định tắt; **chưa có kiểm thử tự động** |
+| F4-08 | CFPREV | `control/lcc.py::LccInverterControl` | `test_tc03_tc09.py::test_tc03_cf_counted_and_reduced_by_cfprev` | Đạt theo tiêu chí TC-03 (giảm tổng CF 36 → 22); không tránh được đợt CF đầu |
+| Chỉ số FRT | CF, phục hồi 90 % P, đỉnh Id/Ud, U_AC, đạt/không đạt theo `criteria` | `analysis/frt.py` | `::test_frt_metrics_on_synthetic_record` | Đạt — **phục hồi sau sự cố chậm (> 0,4 s), cần cải tiến điều khiển** |
 
 ## Dữ liệu vào/ra
 
@@ -72,4 +86,6 @@ Cập nhật lần cuối: 29/10/2026 — sau M3a.
 | TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
 | TC-02 | Hệ LCC kiểu CIGRE, cấu hình VnEMT (`cases/tc02_cigre_lcc.yaml`, SPEC r4) | Đạt — Id 1,000 pu, γ 15,00°, α 14,6°, P 983 MW, xác lập ≈ 0,8 s; TC-02b (CIGRE nguyên bản) chờ số liệu gốc |
 | TC-10 | Xuất/nhập kết quả | Đạt phần tự động (sai lệch ≤ 7,6e-4 % toàn thang); mở bằng Enerplot cần kiểm thủ công |
-| TC-03…TC-09 | | Chưa |
+| TC-03 | Sụt áp nghịch lưu 10–30 % | Đạt — CF được đếm; CFPREV giảm tổng CF 36 → 22 (không giảm số đợt) |
+| TC-09 | 50 sự cố từ snapshot | Đạt — bảng chỉ số đầy đủ, tái lập |
+| TC-04…TC-08 | | Chưa |
