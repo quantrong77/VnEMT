@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
@@ -33,6 +34,33 @@ class CaseFile:
     @property
     def name(self) -> str:
         return str(self.data["case"]["name"])
+
+
+class _Loader(yaml.SafeLoader):
+    """Safe YAML loader that also reads ``1e5`` / ``1.0e5`` as floats (YAML 1.2 rule).
+
+    PyYAML follows YAML 1.1, where an exponent without sign is a string; engineers write
+    ``R_ohm: 1.0e5`` routinely, so the 1.2 float syntax is added.
+    """
+
+
+_Loader.add_implicit_resolver(
+    "tag:yaml.org,2002:float",
+    re.compile(
+        r"""^(?:[-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+        |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
+        |\.[0-9_]+(?:[eE][-+]?[0-9]+)?
+        |[-+]?\.(?:inf|Inf|INF)
+        |\.(?:nan|NaN|NAN))$""",
+        re.VERBOSE,
+    ),
+    list("-+0123456789."),
+)
+
+
+def load_yaml(text: str) -> Any:
+    """Parse YAML text with the VnEMT loader (YAML 1.2 floats)."""
+    return yaml.load(text, Loader=_Loader)
 
 
 @cache
@@ -121,7 +149,7 @@ def parse_case(text: str, path: Path | None = None) -> CaseFile:
     """Parse and validate case text. Raises :class:`CaseError` listing every problem."""
     src = str(path) if path else None
     try:
-        data = yaml.safe_load(text)
+        data = load_yaml(text)
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         where = f"dòng {mark.line + 1}, cột {mark.column + 1}" if mark else None

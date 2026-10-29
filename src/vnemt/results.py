@@ -25,6 +25,9 @@ class Result:
     meta: dict[str, Any] = field(default_factory=dict)
     events: list[tuple[float, str, bool]] = field(default_factory=list)
     """Switching events ``(t, device id, new conduction state)``."""
+    markers: list[tuple[float, str, str]] = field(default_factory=list)
+    """Valve markers ``(t, device id, kind)``: ``fwd`` = forward voltage reapplied after
+    turn-off (end of the extinction interval), ``cf`` = re-conduction without gate pulse."""
 
     def __getitem__(self, name: str) -> NDArray[np.float64]:
         try:

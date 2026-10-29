@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau mốc M1.
+Cập nhật lần cuối: 29/10/2026 — sau mốc M2a.
 
 ## Lõi giải và chất lượng
 
@@ -13,20 +13,32 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M1.
 | S-03 | Δt cố định 1–100 µs | schema `case.solver.dt_us` | `tests/io/test_case_loader.py` | Đạt |
 | S-04 | Nội suy thời điểm đóng cắt, sai số < 1 % Δt, cầu 6 xung không rung | `core/solver.py::step`, `core/switching.py` | `test_switching.py::test_half_wave_rl_rectifier_extinction_time_within_1pct_dt`, `::test_rc_charge_with_off_grid_switch_closing`, `::test_breaker_opens_at_next_current_zero`, `::test_diode_bridge_has_no_chatter` | Đạt |
 | S-05 | G thưa, LU lại khi đổi trạng thái van, bộ đệm LU | `core/solver.py::_topology` | `test_switching.py::test_lu_factorisations_are_cached_per_switch_state` | Đạt về chức năng; thời gian chạy P-01 đo ở M2 |
-| S-06…S-07 | Bộ giải điều khiển; phân vùng | — | — | Chưa |
+| S-06 | Bộ giải điều khiển tuần tự sau mạng, trễ một bước, đa tốc độ | `control/base.py`, `core/simulate.py` | `tests/control/test_blocks_pll.py`, `test_snapshot.py::test_snapshot_includes_control_state` | Đạt — thứ tự khối theo khai báo (như PSCAD) |
+| S-07 | Phân vùng | — | — | Chưa (v0.2) |
 | S-08 | Khởi tạo: (a) từ 0 có ramp; (b) trào lưu; (c) snapshot | `core/solver.py` (a), `core/snapshot.py` (c) | `::test_ramp_source`, `test_snapshot.py::test_case_level_snapshot_roundtrip` | Một phần — (b) cần trào lưu (F6-07); tiêu chí xác lập ≤ 0,5 s kiểm ở TC-02 |
 | S-09 | Snapshot, chạy tiếp sai lệch < 1e-9 | `core/snapshot.py` | `test_snapshot.py::test_continue_from_snapshot_matches_continuous_run` | Đạt (trùng từng bit) |
 | S-10 | Multiple run | — | — | Chưa (M3) |
 | S-11 | Van hai trạng thái R_on/R_off, tùy chọn V_T + R_on | `core/switching.py` | `test_switching.py` | Đạt |
-| S-12 | Thyristor | — | — | Chưa (M2) |
+| S-12 | Thyristor: xung, I_H, t_q, phát hiện mở lại | `core/switching.py`, `EmtSolver.fire` | `tests/core/test_thyristor.py`, `test_tc01_bridge6.py::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Đạt |
 | S-13 | IGBT + diode ngược | `core/switching.py` (diode) | `test_switching.py::test_diode_bridge_*` | Một phần — diode xong, IGBT ở M5 |
-| S-14 | Van tương đương chuỗi thyristor có snubber | — | — | Chưa (M2) |
-| Q-01 | Mỗi mô hình có kiểm thử giải tích | `tests/core/` | | Đạt cho R, L, C, nguồn, khóa, diode |
+| S-14 | Van có snubber RC | `power_electronics/lcc_bridge.py` | `tests/power_electronics/test_lcc_bridge.py::test_bridge_with_rc_snubbers_keeps_average_voltage` | Một phần — snubber xong; quy đổi chuỗi n thyristor ở M2b |
+| Q-01 | Mỗi mô hình có kiểm thử giải tích | `tests/` | | Đạt cho R, L, C, nguồn, khóa, diode, thyristor, MBA, khối điều khiển, PLL |
 | Q-02 | Tái lập < 1e-9 | | `tests/io/test_results_io.py::test_reproducible_bit_for_bit` | Đạt (trùng từng bit) |
 | Q-03 | Kết quả kèm phiên bản, mã băm, tham số solver | `case.py::Case.provenance`, `io/hdf5.py` | `::test_hdf5_roundtrip_with_provenance` | Đạt |
 | Q-04 | SI trong lõi | `model/netlist.py`, schema (đơn vị trong tên khóa) | | Đạt |
 | Q-05 | Thông báo lỗi tiếng Việt kèm đường dẫn khóa | `errors.py`, `io/case_loader.py` | `tests/io/test_case_loader.py` | Đạt |
-| Q-06 | Type hints + mypy strict, ruff, phủ `core/` ≥ 80 % | toàn bộ `src/` | CI | Đạt (phủ `core/` 94–100 %) |
+| Q-06 | Type hints + mypy strict, ruff, phủ `core/` ≥ 80 % | toàn bộ `src/` | CI | Đạt (phủ `core/` 95–100 %, toàn bộ 96 %) |
+
+## HVDC LCC (F1-L, F3)
+
+| Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
+| --- | --- | --- | --- | --- |
+| F1-L01 | Cầu 6 xung, Ud khớp công thức < 1 % | `power_electronics/lcc_bridge.py` | `tests/validation/test_tc01_bridge6.py::test_tc01_alpha_sweep` | Đạt — sai lệch ≤ 0,16 % Ud0 trên dải α 0–150° (chuẩn hóa theo Ud0 vì Ud → 0 tại 90°) |
+| F1-L02 | Cầu 12 xung, MBA Y/Y và Y/Δ, không còn bậc 5, 7 | `components/transformer.py` (MBA) | `tests/core/test_transformer.py` | Một phần — MBA Yy0/Yd1 đạt (tỉ số, lệch −30°, dòng ngắn mạch); cầu 12 xung ở M2b |
+| F1-L03 | EPC + PLL, lệch khoảng cách xung < 0,1° | `control/pll.py`, `control/epc.py` | `test_blocks_pll.py::test_pll_locks_to_phase_and_frequency`, `test_tc01_alpha_sweep`, `::test_tc01_firing_independent_of_time_step`, `::test_tc01_deblock_without_overvoltage` | Đạt — lệch đo được < 0,001°, không phụ thuộc Δt |
+| F1-L04 | Đo μ, γ từng van; γ khớp công thức < 0,5° | `analysis/lcc.py` | `test_tc01_alpha_sweep` | Đạt — γ sai < 0,04° với α ≥ 120°. γ thực tế bị vết khía chuyển mạch chặn khi γ > ~60° − μ, nên công thức chỉ áp dụng cho nghịch lưu |
+| F1-L05 | Phát hiện sự cố chuyển mạch | `core/switching.py` (marker `cf`) | `::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Một phần — phát hiện qua t_q; đếm theo trạm và FRT ở M3 |
+| F1-L06, F3-01…03 | Kháng san bằng, CC/CEA/VDCOL | — | — | Chưa (M2b) |
 
 ## Dữ liệu vào/ra
 
@@ -50,4 +62,5 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M1.
 | --- | --- | --- |
 | M0 | `vnemt run cases/m0_rlc_series.yaml` | Đạt — `tests/test_cli.py`, CI |
 | M1 | V1, V2 cho mạch thụ động và chỉnh lưu diode (`cases/m1_diode_bridge.yaml`) | Đạt — Ud sai lệch < 1 % so với công thức, μ sai lệch < 0,5°, hội tụ khi giảm Δt; S-02 đạt theo SPEC r3 |
-| TC-01…TC-10 | | Chưa |
+| TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
+| TC-02…TC-10 | | Chưa |

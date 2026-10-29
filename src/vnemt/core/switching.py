@@ -1,20 +1,28 @@
-"""Two-state switching devices: timed switch/breaker ``SW`` and diode ``D`` (SPEC S-11, S-13).
+"""Two-state switching devices: switch/breaker ``SW``, diode ``D``, thyristor ``T``.
 
-Each device is a resistive branch with ``G = 1/R_on`` (on) or ``1/R_off`` (off). A diode in
-the on state also carries a forward drop ``V_f``: ``i = (v - V_f)/R_on``, i.e. a Norton
-term ``h = -V_f/R_on``.
+SPEC S-11, S-12, S-13 (diode part). Each device is a resistive branch with ``G = 1/R_on`` (on)
+or ``1/R_off`` (off). Diodes and thyristors in the on state also carry a forward drop ``V_f``:
+``i = (v - V_f)/R_on``, i.e. a Norton term ``h = -V_f/R_on``.
 
-Switching instants inside a step are located by linear interpolation of an indicator
-between the two ends of the step (SPEC S-04):
+Switching instants inside a step are located by linear interpolation of an indicator between
+the two ends of the step (SPEC S-04):
 
-========================  ==========================  =========================
-Device / state            Indicator                   Event when
-========================  ==========================  =========================
-diode on                  branch current ``i``        ``i`` falls below 0
-diode off                 ``v_AK - V_f``              rises above 0
-timed switch              ``t - t_cmd``               command time reached
-breaker armed to open     branch current ``i``        ``i`` changes sign
-========================  ==========================  =========================
+==========================  =============================  ==================================
+Device / state              Indicator                      Event when
+==========================  =============================  ==================================
+diode on                    branch current ``i``           ``i`` falls below 0
+diode off                   ``v_AK - V_f``                 rises above 0
+thyristor on                ``i - I_H``                    falls below 0
+thyristor off, gated        ``v_AK - V_th``                > 0 inside the gate window
+thyristor off, t < t_q      ``v_AK - V_th``                > 0 before ``t_off + t_q``
+                                                           (re-conduction without gate: CF)
+timed switch                ``t - t_cmd``                  command time reached
+breaker armed to open       branch current ``i``           ``i`` changes sign
+==========================  =============================  ==================================
+
+Gate windows ``[fire_on, fire_off]`` of thyristors are set by the firing control
+(:meth:`vnemt.core.solver.EmtSolver.fire`) and may start anywhere inside a step, so the firing
+instant does not depend on the time grid (SPEC F1-L03).
 
 A breaker with ``open_at_zero`` is *armed* at its open command time (a non-topological event)
 and opens at the next current zero.
@@ -29,6 +37,7 @@ electronic apparatus: additional interpolation issues", IPST 1997.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -40,8 +49,37 @@ FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
 BoolArray = NDArray[np.bool_]
 
-DEV_SWITCH, DEV_DIODE = 0, 1
+DEV_SWITCH, DEV_DIODE, DEV_THYRISTOR = 0, 1, 2
 R_ON_DEFAULT, R_OFF_DEFAULT = 1e-3, 1e6
+
+
+@dataclass
+class DeviceState:
+    """Mutable switching bookkeeping, part of the solver state (snapshot, SPEC S-09)."""
+
+    on: BoolArray  # conduction state
+    armed: BoolArray  # breakers waiting for a current zero
+    sched_idx: IntArray  # next schedule entry per switch
+    fire_on: FloatArray  # gate window start (thyristors), -inf = none
+    fire_off: FloatArray  # gate window end
+    off_t: FloatArray  # last turn-off instant, -inf = never
+    fwd_pending: BoolArray  # waiting for v_AK to become positive after turn-off
+
+    FIELDS: ClassVar[tuple[str, ...]] = (
+        "on", "armed", "sched_idx", "fire_on", "fire_off", "off_t", "fwd_pending",
+    )
+
+    def copy(self) -> DeviceState:
+        return DeviceState(**{f: getattr(self, f).copy() for f in self.FIELDS})
+
+
+@dataclass
+class Change:
+    """A device whose conduction state changed."""
+
+    id: str
+    on: bool
+    gated: bool = True  # False for a thyristor turning on without gate pulse (CF)
 
 
 @dataclass
@@ -50,10 +88,13 @@ class SwitchSet:
 
     ids: list[str]
     pos: IntArray  # branch index of each device
-    dev: IntArray  # DEV_SWITCH / DEV_DIODE
+    dev: IntArray  # DEV_*
     g_on: FloatArray
     g_off: FloatArray
     vf: FloatArray
+    vth: FloatArray
+    ih: FloatArray
+    tq: FloatArray
     open_at_zero: BoolArray
     initial_on: BoolArray
     # schedule: per device, sorted command times and target states (True = close)
@@ -76,14 +117,17 @@ class SwitchSet:
             cmds.sort(key=lambda c: (c[0], c[1]))
             sched_t.append(np.array([c[0] for c in cmds], dtype=float))
             sched_on.append(np.array([c[1] for c in cmds], dtype=bool))
+        dev = {"SW": DEV_SWITCH, "D": DEV_DIODE, "T": DEV_THYRISTOR}
         return cls(
             ids=[e.id for e in els],
             pos=np.array(pos, dtype=np.int64),
-            dev=np.array([DEV_DIODE if e.kind == "D" else DEV_SWITCH for e in els],
-                         dtype=np.int64),
+            dev=np.array([dev[e.kind] for e in els], dtype=np.int64),
             g_on=np.array(g_on, dtype=float),
             g_off=np.array(g_off, dtype=float),
             vf=np.array([e.p("V_f_V") for e in els], dtype=float),
+            vth=np.array([e.p("V_th_V") for e in els], dtype=float),
+            ih=np.array([e.p("I_H_A") for e in els], dtype=float),
+            tq=np.array([e.p("t_q_s") for e in els], dtype=float),
             open_at_zero=np.array([bool(e.p("open_at_zero")) for e in els], dtype=bool),
             initial_on=np.array([e.kind == "SW" and bool(e.p("closed")) for e in els],
                                 dtype=bool),
@@ -94,12 +138,24 @@ class SwitchSet:
     def __len__(self) -> int:
         return len(self.ids)
 
+    def initial_state(self) -> DeviceState:
+        n = len(self.ids)
+        return DeviceState(
+            on=self.initial_on.copy(),
+            armed=np.zeros(n, dtype=bool),
+            sched_idx=np.zeros(n, dtype=np.int64),
+            fire_on=np.full(n, -np.inf),
+            fire_off=np.full(n, -np.inf),
+            off_t=np.full(n, -np.inf),
+            fwd_pending=np.zeros(n, dtype=bool),
+        )
+
     def conductance(self, on: BoolArray) -> FloatArray:
         out: FloatArray = np.where(on, self.g_on, self.g_off)
         return out
 
     def norton(self, on: BoolArray) -> FloatArray:
-        """History-like constant term of each device branch (forward drop when on)."""
+        """Constant term of each device branch (forward drop when on)."""
         out: FloatArray = np.where(on, -self.g_on * self.vf, 0.0)
         return out
 
@@ -112,9 +168,7 @@ class SwitchSet:
         self,
         t0: float,
         t1: float,
-        on: BoolArray,
-        armed: BoolArray,
-        sched_idx: IntArray,
+        ds: DeviceState,
         i0: FloatArray,
         i1: FloatArray,
         v0: FloatArray,
@@ -125,56 +179,79 @@ class SwitchSet:
         """
         n = len(self.ids)
         lam = np.full(n, np.inf)
+        h = t1 - t0
         for j in range(n):
-            if self.dev[j] == DEV_DIODE:
-                if on[j]:
+            dev = self.dev[j]
+            if dev == DEV_DIODE:
+                if ds.on[j]:
                     if i1[j] < 0.0:
                         lam[j] = _crossing(i0[j], i1[j])
                 else:
                     a0, a1 = v0[j] - self.vf[j], v1[j] - self.vf[j]
                     if a1 > 0.0:
                         lam[j] = _crossing(-a0, -a1)
-                continue
-            if on[j] and armed[j] and i0[j] * i1[j] <= 0.0:
-                s = 1.0 if i0[j] > 0.0 else -1.0
-                lam[j] = _crossing(s * i0[j], s * i1[j])
-            cmd = self.next_command(j, int(sched_idx[j]))
-            if cmd is not None and cmd[0] <= t1:
-                lam[j] = min(lam[j], max(cmd[0] - t0, 0.0) / (t1 - t0))
+            elif dev == DEV_THYRISTOR:
+                if ds.on[j]:
+                    if i1[j] < self.ih[j]:
+                        lam[j] = _crossing(i0[j] - self.ih[j], i1[j] - self.ih[j])
+                    continue
+                a0, a1 = v0[j] - self.vth[j], v1[j] - self.vth[j]
+                if ds.fire_on[j] <= t1 and ds.fire_off[j] >= t0:
+                    ls = max((ds.fire_on[j] - t0) / h, 0.0)
+                    le = min((ds.fire_off[j] - t0) / h, 1.0)
+                    a_s, a_e = a0 + ls * (a1 - a0), a0 + le * (a1 - a0)
+                    if a_s > 0.0 and a_e > 0.0:
+                        lam[j] = ls
+                    elif a_s <= 0.0 < a_e:
+                        lam[j] = ls + (le - ls) * _crossing(-a_s, -a_e)
+                t_rec = ds.off_t[j] + self.tq[j]
+                if self.tq[j] > 0.0 and t0 < t_rec and a1 > 0.0:
+                    lc = _crossing(-a0, -a1)
+                    if t0 + lc * h < t_rec:
+                        lam[j] = min(lam[j], lc)
+            else:
+                if ds.on[j] and ds.armed[j] and i0[j] * i1[j] <= 0.0:
+                    s = 1.0 if i0[j] > 0.0 else -1.0
+                    lam[j] = _crossing(s * i0[j], s * i1[j])
+                cmd = self.next_command(j, int(ds.sched_idx[j]))
+                if cmd is not None and cmd[0] <= t1:
+                    lam[j] = min(lam[j], max(cmd[0] - t0, 0.0) / h)
         return lam
 
-    def apply(
-        self,
-        t: float,
-        mask: BoolArray,
-        on: BoolArray,
-        armed: BoolArray,
-        sched_idx: IntArray,
-    ) -> list[tuple[str, bool]]:
-        """Apply events for devices in ``mask`` at time ``t`` (arrays updated in place).
+    def apply(self, t: float, mask: BoolArray, ds: DeviceState) -> list[Change]:
+        """Apply events for devices in ``mask`` at time ``t`` (``ds`` updated in place).
 
-        Returns the list of ``(id, new_state)`` for devices whose conduction state changed.
+        Returns the devices whose conduction state changed.
         """
-        changed: list[tuple[str, bool]] = []
+        changed: list[Change] = []
+        eps = 1e-12
         for j in map(int, np.flatnonzero(mask)):
-            new = bool(on[j])
-            if self.dev[j] == DEV_DIODE:
-                new = not on[j]
+            new = bool(ds.on[j])
+            gated = True
+            if self.dev[j] in (DEV_DIODE, DEV_THYRISTOR):
+                new = not ds.on[j]
+                if new and self.dev[j] == DEV_THYRISTOR:
+                    gated = bool(ds.fire_on[j] - eps <= t <= ds.fire_off[j] + eps)
             else:
-                cmd = self.next_command(j, int(sched_idx[j]))
+                cmd = self.next_command(j, int(ds.sched_idx[j]))
                 if cmd is not None and cmd[0] <= t + 1e-15:
-                    sched_idx[j] += 1
+                    ds.sched_idx[j] += 1
                     if cmd[1]:
-                        new, armed[j] = True, False
+                        new, ds.armed[j] = True, False
                     elif self.open_at_zero[j]:
-                        armed[j] = True  # open at the next current zero
+                        ds.armed[j] = True  # open at the next current zero
                     else:
                         new = False
-                elif armed[j]:  # current zero reached
-                    new, armed[j] = False, False
-            if new != bool(on[j]):
-                on[j] = new
-                changed.append((self.ids[j], new))
+                elif ds.armed[j]:  # current zero reached
+                    new, ds.armed[j] = False, False
+            if new != bool(ds.on[j]):
+                ds.on[j] = new
+                if not new:
+                    ds.off_t[j] = t
+                    ds.fwd_pending[j] = self.dev[j] == DEV_THYRISTOR
+                else:
+                    ds.fwd_pending[j] = False
+                changed.append(Change(self.ids[j], new, gated))
         return changed
 
 

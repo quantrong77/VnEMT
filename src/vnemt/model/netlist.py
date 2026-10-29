@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac", "SW", "D"]
+ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac", "SW", "D", "T", "XF1"]
 Param = float | tuple[float, ...]
 
 GROUND_NAMES: frozenset[str] = frozenset({"0", "gnd", "GND", "ground"})
@@ -24,16 +24,18 @@ def is_ground(node: str) -> bool:
 
 @dataclass(frozen=True)
 class Element:
-    """One two-terminal circuit element.
+    """One circuit element.
 
-    ``nodes = (k, m)``; for sources ``k`` is the positive terminal. Positive branch current
-    flows from ``k`` to ``m`` through the element (for sources: from ``m`` to ``k`` inside the
-    source, i.e. a positive source current is injected into ``k``).
+    Two-terminal elements have ``nodes = (k, m)``; for sources ``k`` is the positive terminal.
+    Positive branch current flows from ``k`` to ``m`` through the element (for sources: from
+    ``m`` to ``k`` inside the source, i.e. a positive source current is injected into ``k``).
+    The single-phase transformer ``XF1`` has ``nodes = (k1, m1, k2, m2)`` (winding 1, winding 2;
+    ``k`` is the dotted terminal).
     """
 
     id: str
     kind: ElementKind
-    nodes: tuple[str, str]
+    nodes: tuple[str, ...]
     params: Mapping[str, Param] = field(default_factory=dict)
 
     def p(self, key: str, default: float = 0.0) -> float:
@@ -83,6 +85,6 @@ def build_netlist(case: Mapping[str, Any]) -> Netlist:
             for k, v in raw.items()
             if k not in ("id", "type", "nodes")
         }
-        k, m = raw["nodes"]
-        elements.append(Element(id=raw["id"], kind=raw["type"], nodes=(k, m), params=params))
+        nodes = tuple(str(n) for n in raw["nodes"])
+        elements.append(Element(id=raw["id"], kind=raw["type"], nodes=nodes, params=params))
     return Netlist(elements)

@@ -66,3 +66,30 @@ def test_case_level_snapshot_roundtrip(cases_dir: Path, tmp_path: Path) -> None:
         np.testing.assert_allclose(rest[n], full[n][k0:], rtol=0,
                                    atol=1e-9 * max(1.0, float(np.max(np.abs(full[n])))))
     assert rest.meta["init_snapshot"].endswith("snap.h5")
+
+
+@pytest.mark.req("S-09")
+@pytest.mark.req("S-06")
+def test_snapshot_includes_control_state(cases_dir: Path, tmp_path: Path) -> None:
+    """Thyristor bridge with PLL + EPC: gate windows and PLL integrator survive a snapshot."""
+    from vnemt.control.factory import build_controllers
+    from vnemt.core import EmtSolver
+    from vnemt.io.case_loader import load_case
+
+    data = load_case(cases_dir / "tc01_bridge6.yaml").data
+    case = vnemt.Case(load_case(cases_dir / "tc01_bridge6.yaml"))
+    names = ["P.V", "La.I", "PLL.theta", "EPC.alpha"]
+
+    def solver() -> EmtSolver:
+        return EmtSolver(case.netlist(), dt=20e-6)
+
+    full = simulate(solver(), 0.08, names, controllers=build_controllers(data["controls"]))
+    snap = tmp_path / "c.h5"
+    simulate(solver(), 0.04, names, snapshot=(0.04, snap),
+             controllers=build_controllers(data["controls"]))
+    s2 = solver()
+    rest = simulate(s2, 0.08, names, start=load_snapshot(s2, snap),
+                    controllers=build_controllers(data["controls"]))
+    k0 = int(np.argmin(np.abs(full.time - 0.04)))
+    for n in names:
+        np.testing.assert_array_equal(full[n][k0:], rest[n])

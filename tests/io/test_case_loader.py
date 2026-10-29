@@ -99,3 +99,10 @@ def test_snapshot_init_requires_file() -> None:
     text = MINIMAL.replace("  solver:", "  init: {mode: snapshot}\n  solver:")
     with pytest.raises(CaseError, match="case.init: thiếu khóa bắt buộc 'file'"):
         parse_case(text)
+
+
+def test_yaml_12_exponent_floats() -> None:
+    from vnemt.io.case_loader import load_yaml
+
+    assert load_yaml("a: 1.0e5\nb: 1e-3\nc: 2E6\nd: 1.5\ne: 7\nf: x1e5") == {
+        "a": 1.0e5, "b": 1e-3, "c": 2e6, "d": 1.5, "e": 7, "f": "x1e5"}

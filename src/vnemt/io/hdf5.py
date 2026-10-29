@@ -5,6 +5,7 @@ Layout::
     /time                 float64 [s]
     /signals/<name>       float64, attribute ``unit``
     /events/{t,id,on}     switching event log
+    /markers/{t,id,kind}  valve markers (fwd, cf)
     attributes on /       vnemt_version, python/numpy/scipy versions, case_sha256,
                           solver (JSON), created_utc, ... (``Result.meta``)
 """
@@ -43,6 +44,11 @@ def write_result(result: Result, path: str | Path) -> Path:
         ev.create_dataset("t", data=np.array([e[0] for e in result.events], dtype=float))
         ev.create_dataset("id", data=[e[1] for e in result.events], dtype=h5py.string_dtype())
         ev.create_dataset("on", data=np.array([e[2] for e in result.events], dtype=bool))
+        mk = f.create_group("markers")
+        mk.create_dataset("t", data=np.array([m[0] for m in result.markers], dtype=float))
+        mk.create_dataset("id", data=[m[1] for m in result.markers], dtype=h5py.string_dtype())
+        mk.create_dataset("kind", data=[m[2] for m in result.markers],
+                          dtype=h5py.string_dtype())
         for key, value in result.meta.items():
             f.attrs[key] = _attr(value)
     return p
@@ -71,5 +77,16 @@ def read_result(path: str | Path) -> Result:
                 (float(t), i.decode() if isinstance(i, bytes) else str(i), bool(o))
                 for t, i, o in zip(ev["t"][()], ev["id"][()], ev["on"][()], strict=True)
             ]
+        markers: list[tuple[float, str, str]] = []
+        if "markers" in f:
+            mk = f["markers"]
+            markers = [
+                (float(t), _s(i), _s(k))
+                for t, i, k in zip(mk["t"][()], mk["id"][()], mk["kind"][()], strict=True)
+            ]
         return Result(time=np.asarray(f["time"][()]), signals=signals, units=units, meta=meta,
-                      events=events)
+                      events=events, markers=markers)
+
+
+def _s(x: Any) -> str:
+    return x.decode() if isinstance(x, bytes) else str(x)

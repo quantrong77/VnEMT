@@ -1,8 +1,9 @@
-"""Save and restore the complete solver state (SPEC S-08c, S-09).
+"""Save and restore the complete simulation state (SPEC S-08c, S-09).
 
-A snapshot stores every field of :class:`SolverState` bit-exactly, plus the solver
-fingerprint (netlist, ``dt``, CDA flag). Restoring into a solver with a different fingerprint
-is refused, so a continued run reproduces an uninterrupted run exactly.
+A snapshot stores every field of :class:`SolverState` bit-exactly (network, switching devices,
+control states), plus the solver fingerprint (netlist, ``dt``, CDA flag). Restoring into a
+solver with a different fingerprint is refused, so a continued run reproduces an
+uninterrupted run exactly.
 """
 
 from __future__ import annotations
@@ -14,9 +15,10 @@ import numpy as np
 
 from vnemt import __version__
 from vnemt.core.solver import EmtSolver, SolverState
+from vnemt.core.switching import DeviceState
 from vnemt.errors import VnEMTError
 
-_ARRAYS = ("v", "i_b", "v_b", "sw_on", "armed", "sched_idx")
+_NET = ("v", "i_b", "v_b")
 
 
 def save_snapshot(solver: EmtSolver, st: SolverState, path: str | Path) -> Path:
@@ -30,8 +32,14 @@ def save_snapshot(solver: EmtSolver, st: SolverState, path: str | Path) -> Path:
         f.attrs["t"] = st.t
         f.attrs["step"] = st.step
         f.attrs["cda_left"] = st.cda_left
-        for name in _ARRAYS:
+        for name in _NET:
             f.create_dataset(name, data=getattr(st, name))
+        g = f.create_group("dev")
+        for name in DeviceState.FIELDS:
+            g.create_dataset(name, data=getattr(st.dev, name))
+        c = f.create_group("ctrl")
+        for name, arr in st.ctrl.items():
+            c.create_dataset(name, data=arr)
     return p
 
 
@@ -48,15 +56,14 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
                 f"snapshot '{p}' được tạo cho mạch hoặc bước thời gian khác; "
                 "hãy chạy lại để tạo snapshot mới"
             )
-        arrays = {name: np.asarray(f[name][()]) for name in _ARRAYS}
+        net = {name: np.asarray(f[name][()], dtype=float) for name in _NET}
+        dev = DeviceState(**{name: np.asarray(f["dev"][name][()]) for name in DeviceState.FIELDS})
+        ctrl = {name: np.asarray(f["ctrl"][name][()], dtype=float) for name in f["ctrl"]}
         return SolverState(
             t=float(f.attrs["t"]),
             step=int(f.attrs["step"]),
             cda_left=int(f.attrs["cda_left"]),
-            v=arrays["v"].astype(float),
-            i_b=arrays["i_b"].astype(float),
-            v_b=arrays["v_b"].astype(float),
-            sw_on=arrays["sw_on"].astype(bool),
-            armed=arrays["armed"].astype(bool),
-            sched_idx=arrays["sched_idx"].astype(np.int64),
+            dev=dev,
+            ctrl=ctrl,
+            **net,
         )

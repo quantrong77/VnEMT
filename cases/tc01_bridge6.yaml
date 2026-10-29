@@ -1,0 +1,38 @@
+# TC-01 (SPEC 10.2): six-pulse thyristor bridge, firing angle sweep 0-150 deg.
+# Checks F1-L01 (Ud), F1-L03 (equidistant firing), F1-L04 (mu, gamma).
+#   Ud = (3 sqrt2 / pi) U_LL cos(alpha) - (3/pi) Xc Id
+#   cos(alpha + mu) = cos(alpha) - sqrt2 Xc Id / U_LL ;  gamma = 180 - alpha - mu
+# U_LL = 10 kV, Lc = 5 mH (Xc = 1.571 ohm), Id = 250 A held by an ideal DC current source so
+# that rectifier and inverter operation use the same circuit. The sweep (S-10 comes with M3)
+# is run by tests/validation/test_tc01_bridge6.py, which edits alpha_deg.
+case:
+  name: tc01_bridge6
+  description: Cầu thyristor 6 xung, quét góc kích (TC-01)
+  solver: {dt_us: 20, t_end_s: 0.2, method: trapezoidal, cda: true}
+base: {U_ac_kV: 10, f_Hz: 50}
+meta:
+  source: "Bài toán cầu Graetz có trùng dẫn (Kimbark 1971, ch. 3); số liệu minh họa"
+circuit:
+  elements:
+    - {id: Va, type: V_ac, nodes: [Sa, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: 0}
+    - {id: Vb, type: V_ac, nodes: [Sb, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: -120}
+    - {id: Vc, type: V_ac, nodes: [Sc, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: 120}
+    - {id: La, type: L, nodes: [Sa, A], L_H: 0.005}
+    - {id: Lb, type: L, nodes: [Sb, B], L_H: 0.005}
+    - {id: Lc, type: L, nodes: [Sc, C], L_H: 0.005}
+    # valves in firing order: 1 a+, 2 c-, 3 b+, 4 a-, 5 c+, 6 b-
+    - {id: T1, type: T, nodes: [A, P]}
+    - {id: T2, type: T, nodes: [N, C]}
+    - {id: T3, type: T, nodes: [B, P]}
+    - {id: T4, type: T, nodes: [N, A]}
+    - {id: T5, type: T, nodes: [C, P]}
+    - {id: T6, type: T, nodes: [N, B]}
+    - {id: ID, type: I_dc, nodes: [N, P], I_A: 250.0, ramp_s: 0.02}
+    - {id: RP, type: R, nodes: [P, N], R_ohm: 1.0e5}
+    - {id: RG, type: R, nodes: [N, gnd], R_ohm: 1.0e6}
+controls:
+  - {id: PLL, type: pll, inputs: [Sa.V, Sb.V, Sc.V], f0_Hz: 50}
+  - {id: EPC, type: epc6, pll: PLL, valves: [T1, T2, T3, T4, T5, T6], alpha_deg: 30}
+outputs:
+  signals: [Sa.V, Sb.V, Sc.V, P.V, N.V, La.I, T1.I, T1.V, EPC.alpha, PLL.theta]
+  format: [hdf5]

@@ -12,6 +12,7 @@ import numpy as np
 import scipy
 
 from vnemt import __version__
+from vnemt.control.factory import build_controllers
 from vnemt.core.simulate import simulate
 from vnemt.core.snapshot import load_snapshot
 from vnemt.core.solver import EmtSolver
@@ -110,6 +111,7 @@ class Case:
             decimate=int(out.get("decimate", 1)),
             start=start,
             snapshot=(float(snap["t_s"]), self.resolve(snap["file"])) if snap else None,
+            controllers=build_controllers(self.data.get("controls", [])),
         )
         res.meta = self.provenance()
         res.meta["lu_factorizations"] = solver.stats.lu_factorizations
