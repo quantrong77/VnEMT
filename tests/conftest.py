@@ -8,6 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "cases"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def cases_dir() -> Path:
     return CASES

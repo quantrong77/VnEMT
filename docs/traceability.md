@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — M2b phần 1 (TC-02 chưa đạt).
+Cập nhật lần cuối: 29/10/2026 — sau mốc M2.
 
 ## Lõi giải và chất lượng
 
@@ -12,7 +12,8 @@ Cập nhật lần cuối: 29/10/2026 — M2b phần 1 (TC-02 chưa đạt).
 | S-02 | Hình thang + CDA nửa bước Euler lùi sau đóng cắt | `core/solver.py` | `test_solver_analytic.py::test_trapezoidal_second_order_convergence`, `::test_no_cda_start_lags_half_step`, `test_switching.py::test_inductor_current_interruption_cda` | Đạt theo tiêu chí SPEC r3: dư ≤ 4·i₀·L²/(Δt²·R_off), và 0,16 % điện áp nguồn khi R_off = 1e9 Ω |
 | S-03 | Δt cố định 1–100 µs | schema `case.solver.dt_us` | `tests/io/test_case_loader.py` | Đạt |
 | S-04 | Nội suy thời điểm đóng cắt, sai số < 1 % Δt, cầu 6 xung không rung | `core/solver.py::step`, `core/switching.py` | `test_switching.py::test_half_wave_rl_rectifier_extinction_time_within_1pct_dt`, `::test_rc_charge_with_off_grid_switch_closing`, `::test_breaker_opens_at_next_current_zero`, `::test_diode_bridge_has_no_chatter` | Đạt |
-| S-05 | G thưa, LU lại khi đổi trạng thái van, bộ đệm LU | `core/solver.py::_topology` | `test_switching.py::test_lu_factorisations_are_cached_per_switch_state` | Đạt về chức năng; thời gian chạy P-01 đo ở M2 |
+| S-05 | G thưa, LU lại khi đổi trạng thái van, bộ đệm LU | `core/solver.py::_topology` | `test_switching.py::test_lu_factorisations_are_cached_per_switch_state` | Đạt; TC-02 (95 nút, 24 van) chạy 1 s mô phỏng trong khoảng 24 s |
+| P-01 | Lưỡng cực 12 xung, 1 s, ≤ 2 phút | — | — | Đo gián tiếp: đơn cực khoảng 24 s/1 s, lưỡng cực ước tính khoảng 50 s; đo trực tiếp khi có lưỡng cực (M4) |
 | S-06 | Bộ giải điều khiển tuần tự sau mạng, trễ một bước, đa tốc độ | `control/base.py`, `core/simulate.py` | `tests/control/test_blocks_pll.py`, `test_snapshot.py::test_snapshot_includes_control_state` | Đạt — thứ tự khối theo khai báo (như PSCAD) |
 | S-07 | Phân vùng | — | — | Chưa (v0.2) |
 | S-08 | Khởi tạo: (a) từ 0 có ramp; (b) trào lưu; (c) snapshot | `core/solver.py` (a), `core/snapshot.py` (c) | `::test_ramp_source`, `test_snapshot.py::test_case_level_snapshot_roundtrip` | Một phần — (b) cần trào lưu (F6-07); tiêu chí xác lập ≤ 0,5 s kiểm ở TC-02 |
@@ -39,7 +40,7 @@ Cập nhật lần cuối: 29/10/2026 — M2b phần 1 (TC-02 chưa đạt).
 | F1-L04 | Đo μ, γ từng van; γ khớp công thức < 0,5° | `analysis/lcc.py` | `test_tc01_alpha_sweep` | Đạt — γ sai < 0,04° với α ≥ 120°. γ thực tế bị vết khía chuyển mạch chặn khi γ > ~60° − μ, nên công thức chỉ áp dụng cho nghịch lưu |
 | F1-L05 | Phát hiện sự cố chuyển mạch | `core/switching.py` (marker `cf`) | `::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Một phần — phát hiện qua t_q; đếm theo trạm và FRT ở M3 |
 | F1-L06 | Kháng san bằng, lọc DC | `systems/builder.py` | `test_builder.py` | Một phần — kháng san bằng xong; lọc DC ở M4 |
-| F3-01…F3-03 | CC, CEA, biên dòng, VDCOL, giới hạn | `control/lcc.py`, `control/blocks.py` | `test_builder.py::test_vdcol_and_ramp`, `tests/control/test_blocks_pll.py` | Một phần — đã có mã và kiểm thử đơn vị; đặc tính Ud–Id và hoán đổi vai trò chưa kiểm được vì TC-02 chưa ổn định |
+| F3-01…F3-03 | CC, CEA vòng kín (γ theo IEC 60633), biên dòng, VDCOL, giới hạn | `control/lcc.py`, `control/blocks.py` | `test_builder.py::test_vdcol_and_ramp`, `tests/control/test_blocks_pll.py`, `tests/validation/test_tc02_cigre.py` | Một phần — điểm làm việc CC/CEA đạt (TC-02); kiểm thử hoán đổi vai trò khi U_AC chỉnh lưu giảm cần lịch sự kiện (M3) |
 
 ## Dữ liệu vào/ra
 
@@ -64,5 +65,5 @@ Cập nhật lần cuối: 29/10/2026 — M2b phần 1 (TC-02 chưa đạt).
 | M0 | `vnemt run cases/m0_rlc_series.yaml` | Đạt — `tests/test_cli.py`, CI |
 | M1 | V1, V2 cho mạch thụ động và chỉnh lưu diode (`cases/m1_diode_bridge.yaml`) | Đạt — Ud sai lệch < 1 % so với công thức, μ sai lệch < 0,5°, hội tụ khi giảm Δt; S-02 đạt theo SPEC r3 |
 | TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
-| TC-02 | CIGRE benchmark (`cases/tc02_cigre_lcc.yaml`, bản nháp) | **Chưa đạt** — chạy được nhưng chưa xác lập; cần số liệu gốc CIGRE (docs/design/M2.md mục 9) |
+| TC-02 | Hệ LCC kiểu CIGRE, cấu hình VnEMT (`cases/tc02_cigre_lcc.yaml`, SPEC r4) | Đạt — Id 1,000 pu, γ 15,00°, α 14,6°, P 983 MW, xác lập ≈ 0,8 s; TC-02b (CIGRE nguyên bản) chờ số liệu gốc |
 | TC-03…TC-10 | | Chưa |

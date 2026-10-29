@@ -9,24 +9,29 @@ Rectifier::
     Id_ord     = min(Id_ref(t), VDCOL(Ud_f))
     alpha      = PI(Id_f - Id_ord)  in [alpha_min, alpha_max]        (more current -> more alpha)
 
-Inverter (current order received from the rectifier, ideal telecom)::
+Inverter (current order received from the rectifier, ideal telecom), structure of the CIGRE
+benchmark: two PI regulators and minimum-alpha (maximum-beta) selection::
 
-    alpha_cc   = PI(Id_f - (Id_ord - margin)) in [alpha_min, alpha_max]
-    cos(beta)  = cos(gamma_ref) - sqrt2 Xc Id / U_LL          (predictive CEA)
-    alpha_g    = 180 deg - beta + corr,  d corr/dt = Ki_g (gamma_min - gamma_ref)  (feedback)
-    alpha      = min(alpha_cc, alpha_g)
+    alpha_cc   = PI_cc(Id_f - (Id_ord - margin))
+    alpha_g    = PI_g(gamma_min - gamma_ref)              (closed-loop CEA)
+    alpha      = min(alpha_cc, alpha_g)  in [alpha_min, alpha_max]
 
 In normal operation the inverter current error is positive (Id = Id_ord > Id_ord - margin), so
-``alpha_cc`` rises to its upper limit and CEA governs; when the rectifier loses current control
-(low rectifier AC voltage) the inverter CC takes over (mode shift, F3-01).
+``alpha_cc`` lies above ``alpha_g`` and CEA governs; when the rectifier loses current control
+(low rectifier AC voltage) the inverter CC takes over (mode shift, F3-01). The regulator that
+is not selected tracks the selected output by back-calculation (``I = alpha - Kp e``), so the
+mode change is bumpless and neither integrator winds up. Until every valve has reported an
+extinction angle (start-up) only the CC regulator acts.
 
-Mode coupling without windup: the upper limit of the inverter CC integrator tracks
-``alpha_g + 5 deg`` (so CC can take over within a few degrees), and the gamma feedback
-correction integrates only while CEA is the selected mode.
-
-``gamma_min`` is the smallest measured extinction angle of the station's valves over their
-latest commutations (solver markers ``fwd`` minus turn-off instants, F1-L04). ``U_LL`` is the
-valve-side line voltage from the PLL amplitude of the AC bus and the transformer ratio.
+``gamma_min`` is the smallest extinction angle of the station's valves over their latest
+commutations, measured as defined in IEC 60633: from the end of conduction (turn-off instant
+of the valve) to the zero crossing of its commutating voltage. The crossing is located with the
+PLL angle: for valve ``j`` (0-based, firing order) of a bridge with offset ``phi_b`` it is at
+``theta = 30 deg + phi_b + (j + 2) 60 deg + 180 deg``. The first positive crossing of the
+actual valve voltage is not used: in a 12-pulse station on a weak bus the commutation notches
+of the other bridge cut it short (about 30 deg - mu) whatever the firing angle, which would make
+a CEA regulator run away. That actual reverse-voltage time is still measured for F1-L04 and
+commutation failure detection (:mod:`vnemt.analysis.lcc`, thyristor ``t_q``).
 
 VDCOL (four points)::
 
@@ -121,64 +126,77 @@ class LccRectifierControl(_LccBase):
 
 class LccInverterControl(_LccBase):
     """Outputs: ``alpha``, ``alpha_cc``, ``alpha_g``, ``gamma_min`` [deg], ``Id_ord``, ``Id``,
-    ``Ud`` [pu]."""
+    ``Ud`` [pu], ``mode`` (0 = CEA, 1 = CC)."""
 
-    def __init__(self, id: str, id_signal: str, ud_signal: str, vm_signal: str,
-                 id_ord_signal: str, valves: list[str], I_base: float, U_base: float,
-                 c: LccControl, xc_ohm: float, ratio: float, f_Hz: float) -> None:
+    def __init__(self, id: str, id_signal: str, ud_signal: str, id_ord_signal: str,
+                 pll: str, bridges: list[tuple[list[str], float]], I_base: float,
+                 U_base: float, c: LccControl) -> None:
         super().__init__(id, id_signal, ud_signal, I_base, U_base, c)
-        self.vm_sig, self.ord_sig = vm_signal, id_ord_signal
-        self.valves = valves
-        self.xc, self.ratio, self.f = xc_ohm, ratio, f_Hz
+        self.ord_sig = id_ord_signal
+        self.pll = pll
+        self.valves = [v for vs, _ in bridges for v in vs]
+        # commutating-voltage reversal angle of each valve
+        self._rev = np.array([math.radians(30.0 + off + (j + 2) * 60.0 + 180.0)
+                              for vs, off in bridges for j in range(len(vs))])
         self._sw: list[int] = []
-        self._mk = 0  # markers already scanned (not state: the solver log restarts with it)
 
-    # state: measurement (4) + [I_cc, e_prev, corr, n_measured] + gamma per valve
+    # state: measurement (4) + [I_cc, e_cc_prev, I_g, e_g_prev, n_measured]
+    #        + gamma per valve + last turn-off instant per valve
     def inputs(self) -> list[str]:
-        return [self.id_sig, self.ud_sig, self.vm_sig, self.ord_sig]
+        return [self.id_sig, self.ud_sig, self.ord_sig, f"{self.pll}.theta",
+                f"{self.pll}.omega"]
 
     def outputs(self) -> list[tuple[str, str]]:
         return [("alpha", "deg"), ("alpha_cc", "deg"), ("alpha_g", "deg"),
-                ("gamma_min", "deg"), ("Id_ord", "pu"), ("Id", "pu"), ("Ud", "pu")]
+                ("gamma_min", "deg"), ("Id_ord", "pu"), ("Id", "pu"), ("Ud", "pu"),
+                ("mode", "-")]
 
     def init_state(self) -> FloatArray:
-        head = [0.0, 0.0, 0.0, 0.0, self.c.alpha_max_deg, 0.0, 0.0, 0.0]
-        return np.array(head + [math.nan] * len(self.valves))
+        a0 = self.c.alpha_start_deg
+        n = len(self.valves)
+        head = [0.0, 0.0, 0.0, 0.0, a0, 0.0, a0, 0.0, 0.0]
+        return np.array(head + [math.nan] * n + [-1e9] * n)
 
     def bind(self, solver: EmtSolver) -> None:
         self._sw = [solver.switch_index(v) for v in self.valves]
-        self._pos = {v: k for k, v in enumerate(self.valves)}
 
-    def _scan_gamma(self, x: FloatArray, io: ControlIO) -> None:
-        marks = io.solver.markers
-        for t_m, vid, kind in marks[self._mk:]:
-            k = self._pos.get(vid)
-            if k is not None and kind == "fwd":
-                off = io.state.dev.off_t[self._sw[k]]
-                x[8 + k] = 360.0 * self.f * (t_m - off)
-                x[7] += 1.0
-        self._mk = len(marks)
+    def _update_gamma(self, x: FloatArray, t: float, theta: float, omega: float,
+                      io: ControlIO) -> None:
+        n = len(self.valves)
+        gam, last = x[9:9 + n], x[9 + n:9 + 2 * n]
+        for k, j in enumerate(self._sw):
+            off = io.state.dev.off_t[j]
+            if off > last[k]:
+                last[k] = off
+                th_off = theta - omega * (t - off)
+                g = math.remainder(self._rev[k] - th_off, 2.0 * math.pi)
+                gam[k] = math.degrees(g)
+                x[8] += 1.0
 
     def update(self, t: float, dt: float, x: FloatArray, u: FloatArray,
                io: ControlIO) -> FloatArray:
         idf, udf = self._measure(x, float(u[0]), float(u[1]), dt)
         c = self.c
-        id_ord = float(u[3]) - c.margin_pu
-        self._scan_gamma(x, io)
-        g = x[8:]
-        gmin = float(np.nanmin(g)) if x[7] >= len(self.valves) else math.nan
-        u_ll = float(u[2]) * math.sqrt(1.5) * self.ratio  # phase peak -> line rms, valve side
-        id_a = max(idf, 0.0) * self.ib
-        cosb = math.cos(math.radians(c.gamma_ref_deg)) - (
-            math.sqrt(2.0) * self.xc * id_a / u_ll if u_ll > 0.0 else 0.0)
-        beta = math.degrees(math.acos(min(max(cosb, -1.0), 1.0)))
-        a_g = 180.0 - beta + float(x[6])
-        e = idf - id_ord
-        hi = min(c.alpha_max_deg, max(a_g + 5.0, c.alpha_min_deg))
-        a_cc, x[4] = pi_step(float(x[4]), float(x[5]), e, c.kp_deg, c.ki_deg, dt,
-                             c.alpha_min_deg, hi)
-        x[5] = e
-        if a_g <= a_cc and not math.isnan(gmin):  # CEA selected: gamma feedback active
-            x[6] = min(max(x[6] + c.ki_gamma * (gmin - c.gamma_ref_deg) * dt, -10.0), 10.0)
-        alpha = min(max(min(a_cc, a_g), c.alpha_min_deg), c.alpha_max_deg)
-        return np.array([alpha, a_cc, a_g, gmin, id_ord, idf, udf])
+        lo, hi = c.alpha_min_deg, c.alpha_max_deg
+        id_ord = float(u[2]) - c.margin_pu
+        self._update_gamma(x, t, float(u[3]), float(u[4]), io)
+        g = x[9:9 + len(self.valves)]
+        gmin = float(np.nanmin(g)) if x[8] >= len(self.valves) else math.nan
+        e_cc = idf - id_ord
+        a_cc, i_cc = pi_step(float(x[4]), float(x[5]), e_cc, c.kp_deg, c.ki_deg, dt, lo, hi)
+        if math.isnan(gmin):
+            alpha, a_g, mode = a_cc, math.nan, 1.0
+            x[6] = alpha  # gamma regulator waits at the current output
+        else:
+            e_g = gmin - c.gamma_ref_deg
+            a_g, i_g = pi_step(float(x[6]), float(x[7]), e_g, c.kp_gamma, c.ki_gamma, dt,
+                               lo, hi)
+            if a_g <= a_cc:
+                alpha, mode = a_g, 0.0
+                i_cc = min(max(alpha - c.kp_deg * e_cc, lo), hi)
+            else:
+                alpha, mode = a_cc, 1.0
+                i_g = min(max(alpha - c.kp_gamma * e_g, lo), hi)
+            x[6], x[7] = i_g, e_g
+        x[4], x[5] = i_cc, e_cc
+        return np.array([alpha, a_cc, a_g, gmin, id_ord, idf, udf, mode])

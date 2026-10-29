@@ -3,7 +3,7 @@ title: "Đặc tả phần mềm mô phỏng quá độ điện từ hệ thốn
 version: "0.1"
 status: "Dự thảo"
 date: 2026-10-29
-revision: "0.1-r3 — định lượng tiêu chí S-02 (CDA)"
+revision: "0.1-r4 — TC-02 đổi thành hệ kiểu CIGRE với cấu hình VnEMT, tiêu chí định lượng"
 scope: "Phiên bản đầu tiên, áp dụng cho mô phỏng hệ thống HVDC (LCC, VSC/MMC, đa cực, nhiều trạm, nối đất, trang trại gió ngoài khơi)"
 lang: vi
 ---
@@ -547,7 +547,7 @@ Thứ tự ưu tiên: COMTRADE và `.out/.inf` trước vì phổ biến, công 
 | Case | Chức năng kiểm | Tiêu chí |
 | --- | --- | --- |
 | TC-01 cầu 6 xung, quét α 0–150° | F1-L01, F1-L04 | Ud, μ, γ khớp công thức |
-| TC-02 CIGRE LCC benchmark đơn cực | F1, F3-01 | Xác lập đúng điểm làm việc thiết kế |
+| TC-02 Hệ LCC đơn cực 12 xung kiểu CIGRE (cấu hình VnEMT, ghi chú 10.2.1) | F1, F3-01 | Khởi động từ 0, xác lập trong ≤ 1,0 s; ở xác lập: Id = 1,00 pu ± 1 %, γ_min = γ_ref ± 1°, α chỉnh lưu trong 10–20°, P_dc = 1000 MW ± 3 %, điện áp thanh cái AC 0,95–1,05 pu, dao động đỉnh–đỉnh của Id < 5 %, không có sự cố chuyển mạch; Ud chỉnh lưu khớp công thức tựa xác lập (với U_LL, α, Id đo được) sai < 1 % |
 | TC-03 Sụt áp nghịch lưu 10–30 % | F4 | Đếm CF; CFPREV giảm số CF |
 | TC-04 Lưỡng cực có OLTC và lọc | F5 | Nấc và Q trạm đáp ứng đúng; bảng sóng hài |
 | TC-05 Đảo chiều công suất LCC và VSC | F3-04, F3-05 | Không CF; dốc đúng |
@@ -556,6 +556,17 @@ Thứ tự ưu tiên: COMTRADE và `.out/.inf` trước vì phổ biến, công 
 | TC-08 Điện gió ngoài khơi, sự cố AC trên bờ | F8 | Udc ≤ ngưỡng nhờ điện trở hãm |
 | TC-09 Quét 50 sự cố từ snapshot | S-09, S-10 | Bảng chỉ số đầy đủ |
 | TC-10 Xuất/nhập kết quả | IO-01…IO-07 | Xuất COMTRADE và `.out/.inf`, nhập lại, sai lệch < 0,05 %; mở được trong Enerplot |
+
+#### 10.2.1 Ghi chú TC-02 (bổ sung r4, 29/10/2026)
+
+Chưa có số liệu gốc đầy đủ của CIGRE HVDC benchmark (1991): mạng AC R-L-C có cản, thiết kế bộ lọc, cấu trúc và tham số điều khiển. Vì vậy người dùng quyết định dùng **cấu hình VnEMT kiểu CIGRE**:
+
+- giữ định mức và số liệu MBA chuyển đổi của benchmark;
+- lưới AC là nguồn Thevenin theo SCR 2,5 và góc tổng trở (mục 6);
+- bộ lọc AC do VnEMT phân bổ;
+- điều khiển theo cấu trúc benchmark: CC ở chỉnh lưu; ở nghịch lưu là CC có biên dòng và CEA vòng kín theo γ đo được, chọn α nhỏ nhất; VDCOL.
+
+Giá trị chưa đối chiếu được ghi trong `cases/tc02_cigre_lcc.yaml`. Khi có số liệu gốc, bổ sung TC-02b "CIGRE benchmark nguyên bản" với tiêu chí so sánh V3.
 
 ---
 

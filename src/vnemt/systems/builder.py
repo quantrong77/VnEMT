@@ -125,7 +125,7 @@ def build_system(grid: Grid) -> tuple[list[Element], list[Controller]]:
     rec = next((s for s in grid.stations.values() if s.role == "rectifier"), None)
     stations = sorted(grid.stations.values(), key=lambda s: s.role != "rectifier")
     for st in stations:
-        sel, valves, bridges = _station(grid, st)
+        sel, _, bridges = _station(grid, st)
         els += sel
         assert grid.base is not None
         ib, ub = grid.base.I_A, grid.base.U_dc_kV * 1e3
@@ -138,11 +138,11 @@ def build_system(grid: Grid) -> tuple[list[Element], list[Controller]]:
                                             st.control))
         else:
             assert rec is not None
-            tr = st.transformer
-            ctrl.append(LccInverterControl(
-                f"{st.id}_CTRL", id_sig, ud_sig, f"{st.id}_PLL.Vm", f"{rec.id}_CTRL.Id_ord",
-                valves, ib, ub, st.control, tr.commutating_reactance(f),
-                tr.U2_kV / (tr.U1_kV * tr.tap), f))
+            groups = [([f"{st.id}_{b}{i}" for i in range(1, 7)], 0.0 if b == "Y" else 30.0)
+                      for b in bridges]
+            ctrl.append(LccInverterControl(f"{st.id}_CTRL", id_sig, ud_sig,
+                                           f"{rec.id}_CTRL.Id_ord", f"{st.id}_PLL", groups,
+                                           ib, ub, st.control))
         for b in bridges:
             ids = [f"{st.id}_{b}{i}" for i in range(1, 7)]
             epc.append(Epc6(f"{st.id}_EPC{b}", f"{st.id}_PLL", ids,

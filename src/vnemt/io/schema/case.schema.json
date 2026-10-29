@@ -379,6 +379,9 @@
               "margin_pu": {
                 "type": "number"
               },
+              "kp_gamma": {
+                "type": "number"
+              },
               "ki_gamma": {
                 "type": "number"
               },

@@ -73,14 +73,15 @@ class LccControl:
     alpha_max_deg: float = 165.0
     alpha_start_deg: float = 90.0
     kp_deg: float = 60.0  # deg per pu current error
-    ki_deg: float = 1200.0  # deg per (pu s): Ti = 50 ms
+    ki_deg: float = 2400.0  # deg per (pu s): Ti = 25 ms (PI zero below crossover)
     T_id_s: float = 0.0012
     T_ud_up_s: float = 0.04
     T_ud_down_s: float = 0.01
     vdcol: tuple[float, float, float, float] | None = (0.4, 0.9, 0.55, 1.0)  # u_lo, u_hi, i_lo, i_hi
     gamma_ref_deg: float = 15.0
     margin_pu: float = 0.1
-    ki_gamma: float = 20.0  # 1/s, feedback correction of predictive CEA
+    kp_gamma: float = 0.7506  # deg per deg (CIGRE benchmark, to be checked)
+    ki_gamma: float = 30.0  # 1/s: Ti = 25 ms (VnEMT; the benchmark uses about 54 ms)
 
 
 @dataclass(frozen=True)

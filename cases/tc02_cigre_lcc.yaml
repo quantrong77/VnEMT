@@ -1,6 +1,6 @@
 # TC-02 (SPEC 10.2): CIGRE HVDC benchmark, monopole 12-pulse, 1000 MW, 500 kV, 2 kA.
-# STATUS: DRAFT - the case builds and runs, but the closed-loop operating point is not yet
-# stable (see docs/design/M2.md section 9). Acceptance TC-02 is NOT met.
+# VnEMT configuration of the CIGRE-type system (SPEC 10.2.1, decision of 29/10/2026); the
+# acceptance criteria of SPEC 10.2 TC-02 (r4) are checked by tests/validation/test_tc02_cigre.py.
 #
 # Data status (Szechtman, Wess, Thio 1991; CIGRE WG 14.02):
 #   [ok]  ratings 1000 MW / 500 kV / 2 kA; AC 345 kV and 230 kV, 50 Hz; SCR 2.5
@@ -12,10 +12,13 @@
 #         here a Thevenin R-L at the given SCR and angle (SPEC section 6)
 #   [x]   AC filters: allocation chosen by VnEMT (~625 Mvar per end); the benchmark has its own
 #         filter design (double-tuned + capacitor)
-#   [x]   control gains and structure: VnEMT design (docs/design/M2.md), not the benchmark's
+#   [x]   control: benchmark structure (rectifier CC; inverter CC + closed-loop CEA, minimum
+#         alpha selection; VDCOL) with VnEMT gains: CC Kp = 60 deg/pu, Ti = 25 ms (the
+#         benchmark's Ti = 9.1 ms oscillates at 10 Hz on this DC circuit), gamma loop
+#         Kp = 0.75, Ki = 30 1/s, inverter CC Kp = 36.1 deg/pu, Ti = 15.4 ms
 case:
   name: tc02_cigre_lcc
-  description: CIGRE HVDC benchmark đơn cực 12 xung (bản nháp, chưa đạt nghiệm thu)
+  description: Hệ LCC đơn cực 12 xung kiểu CIGRE, cấu hình VnEMT (TC-02)
   solver: {dt_us: 20, t_end_s: 1.5, method: trapezoidal, cda: true}
 base: {S_MVA: 1000, U_dc_kV: 500, f_Hz: 50}
 meta:
@@ -36,7 +39,7 @@ converter_stations:
       - {type: single_tuned, h: 13, Q_Mvar: 150}
       - {type: high_pass, h: 24, Q_Mvar: 175}
       - {type: capacitor, Q_Mvar: 150}
-    control: {alpha_min_deg: 5}
+    control: {alpha_min_deg: 5, kp_deg: 60, ki_deg: 2400}
   - id: INV
     type: lcc_12pulse
     role: inverter
@@ -49,12 +52,14 @@ converter_stations:
       - {type: single_tuned, h: 13, Q_Mvar: 150}
       - {type: high_pass, h: 24, Q_Mvar: 175}
       - {type: capacitor, Q_Mvar: 150}
-    control: {alpha_min_deg: 95, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15}
+    control: {alpha_min_deg: 95, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+              kp_deg: 36.1, ki_deg: 2344, kp_gamma: 0.7506, ki_gamma: 30}
 dc_network:
   lines:
     - {id: DCL, from: REC, to: INV, model: t, R_ohm: 5.0, L_H: 1.1936, C_F: 26.0e-6}
 outputs:
   signals: [REC_CTRL.alpha, REC_CTRL.Id, REC_CTRL.Ud, REC_CTRL.Id_ord, INV_CTRL.alpha,
-            INV_CTRL.gamma_min, INV_CTRL.Id, INV_CTRL.Ud, REC_DC.V, INV_DC.V, ACR_a.V, ACI_a.V]
+            INV_CTRL.gamma_min, INV_CTRL.mode, INV_CTRL.Id, REC_DC.V, INV_DC.V, REC_Ls.I,
+            ACR_a.V, ACR_b.V, ACR_c.V, ACI_a.V, ACI_b.V, ACI_c.V]
   format: [hdf5]
   decimate: 5
