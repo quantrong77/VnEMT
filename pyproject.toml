@@ -1,0 +1,26 @@
+[project]
+name = "vnemt"
+version = "0.1.0.dev0"
+description = "Phần mềm mô phỏng quá độ điện từ hệ thống điện, ưu tiên HVDC"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "numba>=0.59", "h5py>=3.10", "pyyaml>=6.0", "jsonschema>=4.20", "matplotlib>=3.8", "plotly>=5.18"]
+
+[project.optional-dependencies]
+pscad = ["mhi-psout>=1.2; sys_platform == 'win32'", "mhi-pscad>=3.0; sys_platform == 'win32'"]
+dev = ["pytest>=8", "pytest-benchmark>=4", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10"]
+
+[project.scripts]
+vnemt = "vnemt.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vnemt"]
+
+[tool.pytest.ini_options]
+markers = ["slow: kiểm thử chạy lâu", "req(id): mã yêu cầu SPEC được kiểm", "pscad: cần PSCAD hoặc thư viện MHI trên Windows", "psse: cần PSS/E và psspy"]
+
+[tool.ruff]
+line-length = 100

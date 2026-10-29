@@ -1,0 +1,9 @@
+private/*
+!private/.gitkeep
+.venv/
+__pycache__/
+*.h5
+results/
+.pytest_cache/
+.mypy_cache/
+.claude/settings.local.json

@@ -1,0 +1,24 @@
+# Mẫu bộ tiêu chí lưới - NGƯỜI DÙNG TỰ ĐIỀN. Để trống (null) = chưa đặt; nghiên cứu sẽ dừng và báo lỗi.
+criteria:
+  name: null                # ví dụ: "Tiêu chí quy hoạch 500 kV"
+  basis:                    # căn cứ: số hiệu văn bản, điều khoản
+    document: null
+    clauses: []
+  voltage_pu:               # dải điện áp cho phép theo cấp điện áp
+    normal:   {500kV: [null, null], 220kV: [null, null], 110kV: [null, null]}
+    n_minus_1: {500kV: [null, null], 220kV: [null, null], 110kV: [null, null]}
+  loading_pct:              # mang tải tối đa so với định mức
+    line:        {normal: null, n_minus_1: null}
+    transformer: {normal: null, n_minus_1: null}
+  short_circuit:
+    max_ratio_to_breaker_rating: null   # Ik'' / Icu cho phép
+  contingency:
+    levels: [N-1]          # thêm N-2, N-1-1 nếu áp dụng
+  stability:
+    min_damping_ratio_pct: null
+    frequency_nadir_Hz: null
+    rocof_Hz_per_s: null
+  hvdc:
+    min_scr: null
+    min_escr: null
+    runback_recovery_s: null

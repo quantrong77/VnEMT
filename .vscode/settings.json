@@ -1,0 +1,15 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "tests",
+    "-q"
+  ],
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
+  },
+  "yaml.schemas": {
+    "./src/vnemt/io/schema/case.schema.json": "cases/**/*.yaml"
+  },
+  "files.encoding": "utf8"
+}

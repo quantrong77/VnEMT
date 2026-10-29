@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest *)",
+      "Bash(python -m pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(vnemt *)",
+      "Bash(uv pip *)",
+      "Bash(uv run *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Read(./private/**)",
+      "Edit(./private/**)"
+    ]
+  }
+}
