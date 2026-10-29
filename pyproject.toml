@@ -7,7 +7,7 @@ dependencies = ["numpy>=1.26", "scipy>=1.11", "numba>=0.59", "h5py>=3.10", "pyya
 
 [project.optional-dependencies]
 pscad = ["mhi-psout>=1.2; sys_platform == 'win32'", "mhi-pscad>=3.0; sys_platform == 'win32'"]
-dev = ["pytest>=8", "pytest-benchmark>=4", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10"]
+dev = ["pytest>=8", "pytest-benchmark>=4", "pytest-cov>=5", "hypothesis>=6", "ruff>=0.5", "mypy>=1.10", "types-PyYAML", "types-jsonschema"]
 
 [project.scripts]
 vnemt = "vnemt.cli:main"
@@ -24,3 +24,13 @@ markers = ["slow: kiểm thử chạy lâu", "req(id): mã yêu cầu SPEC đư�
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["scipy", "scipy.*", "h5py", "numba", "matplotlib", "matplotlib.*"]
+ignore_missing_imports = true

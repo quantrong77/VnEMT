@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vnemt.local/schema/case.schema.json",
+  "title": "VnEMT case",
+  "description": "VnEMT case file (SPEC-v0.1 section 9.1). Units are SI unless the key name says otherwise.",
+  "type": "object",
+  "required": ["case"],
+  "additionalProperties": false,
+  "properties": {
+    "case": {
+      "type": "object",
+      "required": ["name", "solver"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9_\\-]+$"},
+        "description": {"type": "string"},
+        "solver": {
+          "type": "object",
+          "required": ["dt_us", "t_end_s"],
+          "additionalProperties": false,
+          "properties": {
+            "dt_us": {"type": "number", "minimum": 1, "maximum": 100},
+            "t_end_s": {"type": "number", "exclusiveMinimum": 0},
+            "method": {"enum": ["trapezoidal"], "default": "trapezoidal"},
+            "cda": {"type": "boolean", "default": true}
+          }
+        },
+        "init": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {"enum": ["zero", "loadflow", "snapshot"], "default": "zero"},
+            "file": {"type": "string"}
+          }
+        }
+      }
+    },
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "S_MVA": {"type": "number", "exclusiveMinimum": 0},
+        "U_dc_kV": {"type": "number", "exclusiveMinimum": 0},
+        "U_ac_kV": {"type": "number", "exclusiveMinimum": 0},
+        "f_Hz": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {"type": "string"},
+        "author": {"type": "string"},
+        "note": {"type": "string"}
+      }
+    },
+    "circuit": {
+      "type": "object",
+      "required": ["elements"],
+      "additionalProperties": false,
+      "properties": {
+        "elements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/element"}
+        }
+      }
+    },
+    "ac_systems": {"type": "array", "items": {"type": "object"}},
+    "converter_stations": {"type": "array", "items": {"type": "object"}},
+    "dc_network": {"type": "object"},
+    "events": {"type": "array", "items": {"type": "object"}},
+    "criteria": {"type": "object"},
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signals": {
+          "oneOf": [
+            {"const": "all"},
+            {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          ]
+        },
+        "format": {
+          "type": "array",
+          "items": {"enum": ["hdf5", "csv", "comtrade", "pscad_out", "mat"]},
+          "minItems": 1
+        },
+        "decimate": {"type": "integer", "minimum": 1},
+        "dir": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "nodes2": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"},
+    "positive": {"type": "number", "exclusiveMinimum": 0},
+    "ramp": {"type": "number", "minimum": 0},
+    "element": {
+      "type": "object",
+      "required": ["id", "type", "nodes"],
+      "properties": {"type": {"enum": ["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac"]}},
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "R"}}},
+          "then": {
+            "required": ["R_ohm"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "R_ohm": {"$ref": "#/$defs/positive"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "L"}}},
+          "then": {
+            "required": ["L_H"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "L_H": {"$ref": "#/$defs/positive"},
+              "i0_A": {"type": "number"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "C"}}},
+          "then": {
+            "required": ["C_F"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "C_F": {"$ref": "#/$defs/positive"},
+              "v0_V": {"type": "number"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "V_dc"}}},
+          "then": {
+            "required": ["U_V"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "U_V": {"type": "number"},
+              "R_ohm": {"type": "number", "minimum": 0},
+              "ramp_s": {"$ref": "#/$defs/ramp"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "V_ac"}}},
+          "then": {
+            "required": ["U_peak_V", "f_Hz"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "U_peak_V": {"type": "number", "minimum": 0},
+              "f_Hz": {"$ref": "#/$defs/positive"},
+              "phase_deg": {"type": "number"},
+              "R_ohm": {"type": "number", "minimum": 0},
+              "ramp_s": {"$ref": "#/$defs/ramp"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "I_dc"}}},
+          "then": {
+            "required": ["I_A"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "I_A": {"type": "number"},
+              "ramp_s": {"$ref": "#/$defs/ramp"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "I_ac"}}},
+          "then": {
+            "required": ["I_peak_A", "f_Hz"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/id"}, "type": true, "nodes": {"$ref": "#/$defs/nodes2"},
+              "I_peak_A": {"type": "number", "minimum": 0},
+              "f_Hz": {"$ref": "#/$defs/positive"},
+              "phase_deg": {"type": "number"},
+              "ramp_s": {"$ref": "#/$defs/ramp"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+# RL branch energised at t = 0 from a 50 Hz source with internal resistance (Norton form).
+# Analytic: i(t) = Um/|Z| * [sin(wt + phi - theta) - sin(phi - theta) * exp(-t/tau)],
+#   Z = (Rs + R) + j w L, theta = atan(wL/(Rs+R)), tau = L/(Rs+R)
+case:
+  name: m0_rl_ac
+  description: Đóng nhánh RL vào nguồn xoay chiều 50 Hz có điện trở trong
+  solver: {dt_us: 20, t_end_s: 0.1}
+base: {f_Hz: 50}
+meta:
+  source: "Bài toán giải tích quá độ đóng mạch RL, số liệu minh họa"
+circuit:
+  elements:
+    - {id: VS, type: V_ac, nodes: [N1, gnd], U_peak_V: 1000.0, f_Hz: 50, phase_deg: 0, R_ohm: 1.0}
+    - {id: L1, type: L, nodes: [N1, gnd], L_H: 0.05}
+outputs:
+  signals: all
+  format: [hdf5]
