@@ -3,7 +3,7 @@ title: "Đặc tả phần mềm mô phỏng quá độ điện từ hệ thốn
 version: "0.1"
 status: "Dự thảo"
 date: 2026-10-29
-revision: "0.1-r2 — bổ sung mục 9.3 trao đổi dữ liệu"
+revision: "0.1-r3 — định lượng tiêu chí S-02 (CDA)"
 scope: "Phiên bản đầu tiên, áp dụng cho mô phỏng hệ thống HVDC (LCC, VSC/MMC, đa cực, nhiều trạm, nối đất, trang trại gió ngoài khơi)"
 lang: vi
 ---
@@ -202,7 +202,7 @@ vnemt/
 | Mã | Yêu cầu | Tiêu chí chấp nhận |
 | --- | --- | --- |
 | S-01 | Phân tích nút theo phương pháp Dommel: mỗi phần tử L, C được rời rạc hóa thành điện dẫn tương đương song song nguồn dòng lịch sử. Hệ phương trình `G·v(t) = i_hist(t) + i_src(t)` | Mạch RLC nối tiếp: sai số so với lời giải giải tích < 0,1 % với Δt = 1 µs |
-| S-02 | Quy tắc tích phân hình thang (mặc định); cho phép chuyển nửa bước sang Euler lùi (Critical Damping Adjustment) ngay sau đóng cắt để triệt dao động số | Không có dao động số khi ngắt dòng qua cuộn cảm |
+| S-02 | Quy tắc tích phân hình thang (mặc định); cho phép chuyển nửa bước sang Euler lùi (Critical Damping Adjustment) ngay sau đóng cắt để triệt dao động số | Ngắt dòng i₀ qua cuộn cảm L bằng khóa R_off: không CDA thì dao động số duy trì; có CDA thì biên độ dư sau hai nửa bước ≤ 4·i₀·L²/(Δt²·R_off) (sai lệch ±5 %), và ≤ 1 % điện áp nguồn khi R_off ≥ 1e9 Ω. Khuyến cáo: khóa dùng để ngắt dòng cuộn cảm khai báo R_off ≥ 1e9 Ω (ghi chú 5.1.1) |
 | S-03 | Bước thời gian cố định Δt cấu hình 1–100 µs; mặc định 20 µs cho LCC, 10 µs cho MMC dạng DEM | |
 | S-04 | Nội suy tuyến tính thời điểm đóng cắt trong bước (zero-crossing của dòng van, thời điểm xung kích), rồi đồng bộ lại lưới thời gian | Sai số thời điểm tắt van < 1 % Δt; dạng sóng cầu 6 xung không có rung (chatter) |
 | S-05 | Ma trận G thưa; chỉ phân tích lại LU khi trạng thái van đổi; lưu bộ nhớ đệm các phân tích LU theo tổ hợp trạng thái thường gặp | Thời gian chạy cầu 12 xung 1 s mô phỏng ≤ 2 phút trên laptop 4 nhân (mục tiêu, xem 8.1) |
@@ -211,6 +211,12 @@ vnemt/
 | S-08 | Khởi tạo: (a) khởi động từ 0 với ramp nguồn; (b) từ trào lưu công suất AC/DC; (c) từ snapshot đã lưu | Hệ CIGRE benchmark đạt xác lập trong ≤ 0,5 s khi khởi tạo từ snapshot |
 | S-09 | Snapshot: lưu toàn bộ trạng thái (nguồn lịch sử, trạng thái van, trạng thái điều khiển) tại thời điểm t; nạp lại để chạy nhiều kịch bản sự cố | Chạy tiếp từ snapshot cho kết quả trùng (sai lệch < 1e-9 pu) so với chạy liền |
 | S-10 | Multiple run: quét tham số (vị trí sự cố, thời điểm trên sóng, điện trở sự cố, hệ số điều khiển), chạy song song bằng multiprocessing | 100 lần chạy được điều phối tự động, tổng hợp bảng chỉ số |
+
+#### 5.1.1 Ghi chú về CDA và điện trở khóa hở (bổ sung r3)
+
+Khi khóa hở mạch nối tiếp cuộn cảm L, nhánh L–R_off tạo một mode cứng τ = L/R_off, thường ≪ Δt. Hai nửa bước Euler lùi của CDA dập mode này đi (1 + x)⁻², với x = Δt·R_off/(2L). Phần dư sau đó bị quy tắc hình thang (không L-ổn định) giữ dao động đổi dấu mỗi bước, biên độ ≈ 4·i₀·L²/(Δt²·R_off).
+
+Phần dư tỉ lệ nghịch với R_off, nên khóa/máy cắt dùng để ngắt dòng cuộn cảm cần R_off ≥ 1e9 Ω. Với van có snubber RC (S-14), mode này là dao động vật lý của L–C và được giải đúng. Không tăng số nửa bước Euler lùi: đó là thay đổi phương pháp tích phân. Kết quả kiểm chứng: `docs/design/M1.md` mục 5.
 
 ### 5.2 Mô hình van bán dẫn
 

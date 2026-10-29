@@ -11,7 +11,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac"]
+ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac", "SW", "D"]
+Param = float | tuple[float, ...]
 
 GROUND_NAMES: frozenset[str] = frozenset({"0", "gnd", "GND", "ground"})
 
@@ -33,10 +34,21 @@ class Element:
     id: str
     kind: ElementKind
     nodes: tuple[str, str]
-    params: Mapping[str, float] = field(default_factory=dict)
+    params: Mapping[str, Param] = field(default_factory=dict)
 
     def p(self, key: str, default: float = 0.0) -> float:
-        return float(self.params.get(key, default))
+        """Scalar parameter."""
+        v = self.params.get(key, default)
+        if isinstance(v, tuple):
+            raise TypeError(f"{self.id}.{key} is a list, expected a scalar")
+        return float(v)
+
+    def times(self, key: str) -> tuple[float, ...]:
+        """Parameter given as a scalar or a list, returned as a tuple."""
+        v = self.params.get(key)
+        if v is None:
+            return ()
+        return v if isinstance(v, tuple) else (float(v),)
 
 
 @dataclass
@@ -66,7 +78,11 @@ def build_netlist(case: Mapping[str, Any]) -> Netlist:
     """Build a :class:`Netlist` from the ``circuit`` section of a validated case dict."""
     elements: list[Element] = []
     for raw in case.get("circuit", {}).get("elements", []):
-        params = {k: float(v) for k, v in raw.items() if k not in ("id", "type", "nodes")}
+        params: dict[str, Param] = {
+            k: tuple(float(x) for x in v) if isinstance(v, list) else float(v)
+            for k, v in raw.items()
+            if k not in ("id", "type", "nodes")
+        }
         k, m = raw["nodes"]
         elements.append(Element(id=raw["id"], kind=raw["type"], nodes=(k, m), params=params))
     return Netlist(elements)

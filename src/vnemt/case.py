@@ -13,6 +13,7 @@ import scipy
 
 from vnemt import __version__
 from vnemt.core.simulate import simulate
+from vnemt.core.snapshot import load_snapshot
 from vnemt.core.solver import EmtSolver
 from vnemt.errors import CaseError
 from vnemt.io.case_loader import CaseFile, load_case, parse_case
@@ -62,9 +63,10 @@ class Case:
         if "circuit" not in self.data:
             raise CaseError("case không có mục 'circuit' để mô phỏng", source=src)
         mode = self.data["case"].get("init", {}).get("mode", "zero")
-        if mode != "zero":
+        if mode == "loadflow":
             raise CaseError(
-                f"chế độ khởi tạo '{mode}' chưa triển khai (dự kiến mốc M1); dùng 'zero'",
+                "chế độ khởi tạo 'loadflow' chưa triển khai (cần trào lưu AC/DC, F6-07); "
+                "dùng 'zero' hoặc 'snapshot'",
                 path="case.init.mode", source=src,
             )
         bad = [f for f in self.formats if f not in _SUPPORTED_FORMATS]
@@ -82,6 +84,13 @@ class Case:
     def netlist(self) -> Netlist:
         return build_netlist(self.data)
 
+    def resolve(self, path: str) -> Path:
+        """Resolve a path given in the case relative to the case file's directory."""
+        p = Path(path)
+        if p.is_absolute() or self.file.path is None:
+            return p
+        return self.file.path.parent / p
+
     def run(self) -> Result:
         """Simulate the case and return the result with provenance metadata."""
         self._check_supported()
@@ -89,13 +98,24 @@ class Case:
         solver = EmtSolver(self.netlist(), dt=sp["dt_us"] * 1e-6, cda=bool(sp["cda"]))
         out = self.data.get("outputs", {})
         sig = out.get("signals", "all")
+        init = self.data["case"].get("init", {})
+        start = None
+        if init.get("mode") == "snapshot":
+            start = load_snapshot(solver, self.resolve(init["file"]))
+        snap = self.data["case"].get("snapshot")
         res = simulate(
             solver,
             t_end=float(sp["t_end_s"]),
             signals=None if sig == "all" else list(sig),
             decimate=int(out.get("decimate", 1)),
+            start=start,
+            snapshot=(float(snap["t_s"]), self.resolve(snap["file"])) if snap else None,
         )
         res.meta = self.provenance()
+        res.meta["lu_factorizations"] = solver.stats.lu_factorizations
+        res.meta["switching_events"] = solver.stats.events
+        if start is not None:
+            res.meta["init_snapshot"] = str(self.resolve(init["file"]))
         return res
 
     def provenance(self) -> dict[str, Any]:

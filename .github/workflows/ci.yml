@@ -25,8 +25,9 @@ jobs:
       - name: Mypy
         run: uv run --no-sync mypy src
       - name: Pytest
-        run: uv run --no-sync pytest -q -m "not slow and not pscad and not psse" --cov=vnemt --cov-report=term
-      - name: M0 acceptance (vnemt run RLC)
+        run: uv run --no-sync pytest -q -m "not pscad and not psse" --cov=vnemt --cov-report=term
+      - name: Acceptance cases (M0, M1)
         run: |
           uv run --no-sync vnemt validate cases/
           uv run --no-sync vnemt run cases/m0_rlc_series.yaml
+          uv run --no-sync vnemt run cases/m1_diode_bridge.yaml

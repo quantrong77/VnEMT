@@ -4,6 +4,7 @@ Layout::
 
     /time                 float64 [s]
     /signals/<name>       float64, attribute ``unit``
+    /events/{t,id,on}     switching event log
     attributes on /       vnemt_version, python/numpy/scipy versions, case_sha256,
                           solver (JSON), created_utc, ... (``Result.meta``)
 """
@@ -38,6 +39,10 @@ def write_result(result: Result, path: str | Path) -> Path:
             ds = g.create_dataset(name, data=data)
             ds.attrs["unit"] = result.units.get(name, "")
         f.attrs["signal_order"] = json.dumps(list(result.signals))
+        ev = f.create_group("events")
+        ev.create_dataset("t", data=np.array([e[0] for e in result.events], dtype=float))
+        ev.create_dataset("id", data=[e[1] for e in result.events], dtype=h5py.string_dtype())
+        ev.create_dataset("on", data=np.array([e[2] for e in result.events], dtype=bool))
         for key, value in result.meta.items():
             f.attrs[key] = _attr(value)
     return p
@@ -59,4 +64,12 @@ def read_result(path: str | Path) -> Result:
                 except json.JSONDecodeError:
                     pass
             meta[k] = v.item() if isinstance(v, np.generic) else v
-        return Result(time=np.asarray(f["time"][()]), signals=signals, units=units, meta=meta)
+        events: list[tuple[float, str, bool]] = []
+        if "events" in f:
+            ev = f["events"]
+            events = [
+                (float(t), i.decode() if isinstance(i, bytes) else str(i), bool(o))
+                for t, i, o in zip(ev["t"][()], ev["id"][()], ev["on"][()], strict=True)
+            ]
+        return Result(time=np.asarray(f["time"][()]), signals=signals, units=units, meta=meta,
+                      events=events)

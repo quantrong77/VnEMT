@@ -23,6 +23,8 @@ class Result:
     signals: dict[str, NDArray[np.float64]]
     units: dict[str, str]
     meta: dict[str, Any] = field(default_factory=dict)
+    events: list[tuple[float, str, bool]] = field(default_factory=list)
+    """Switching events ``(t, device id, new conduction state)``."""
 
     def __getitem__(self, name: str) -> NDArray[np.float64]:
         try:

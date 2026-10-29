@@ -80,3 +80,22 @@ def test_unknown_output_signal() -> None:
     case = vnemt.loads(MINIMAL + "outputs: {signals: [B.V]}\n")
     with pytest.raises(CaseError, match="B.V"):
         case.run()
+
+
+def test_switch_and_diode_elements() -> None:
+    ok = MINIMAL + (
+        "    - {id: S1, type: SW, nodes: [A, B], t_close_s: [0.1, 0.3], t_open_s: 0.2,"
+        " open_at_zero: true}\n"
+        "    - {id: D1, type: D, nodes: [B, gnd], V_f_V: 0.7, R_on_ohm: 0.001}\n"
+    )
+    case = vnemt.loads(ok)
+    sw = case.netlist().element("S1")
+    assert sw.times("t_close_s") == (0.1, 0.3) and sw.times("t_open_s") == (0.2,)
+    with pytest.raises(CaseError, match="khóa không được hỗ trợ 'V_f_V'"):
+        parse_case(ok.replace("t_open_s: 0.2,", "t_open_s: 0.2, V_f_V: 1,"))
+
+
+def test_snapshot_init_requires_file() -> None:
+    text = MINIMAL.replace("  solver:", "  init: {mode: snapshot}\n  solver:")
+    with pytest.raises(CaseError, match="case.init: thiếu khóa bắt buộc 'file'"):
+        parse_case(text)
