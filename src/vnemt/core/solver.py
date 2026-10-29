@@ -134,6 +134,7 @@ class SolverState:
     cda_left: int = 0  # backward-Euler half steps still to take
     ctrl: dict[str, FloatArray] = field(default_factory=dict)  # control states (S-06)
     hist: dict[str, FloatArray] = field(default_factory=dict)  # line history buffers
+    taps: FloatArray = field(default_factory=lambda: np.zeros(0))  # transformer ratio factors
 
     @property
     def sw_on(self) -> BoolArray:
@@ -145,6 +146,7 @@ class SolverState:
             v_b=self.v_b.copy(), dev=self.dev.copy(), cda_left=self.cda_left,
             ctrl={k: a.copy() for k, a in self.ctrl.items()},
             hist={k: a.copy() for k, a in self.hist.items()},
+            taps=self.taps.copy(),
         )
 
 
@@ -221,6 +223,9 @@ class EmtSolver:
         bm: list[int] = []
         coup: list[tuple[int, int, float]] = []  # off-diagonal entries of Y
         self.lines = LineSet(dt)
+        self._xf: list[tuple[int, int, float, float]] = []  # (b1, b2, y, a0) per XF1
+        self._xf_ids: list[str] = []
+        self._sat_elements: dict[int, Element] = {}
         ideal_v: list[Element] = []
         isrc: list[Element] = []
 
@@ -248,6 +253,8 @@ class EmtSolver:
                     ideal_v.append(el)
             elif el.kind in ("SW", "D", "T"):
                 add(el, K_SW, 0.0, *n2)  # conductance set per switch state
+            elif el.kind == "LSAT":
+                add(el, K_L, 0.0, *n2)  # inductor; conductance set by its segment
             elif el.kind == "XF1":
                 self._add_transformer(el, add, coup)
             elif el.kind == "LINE":
@@ -267,11 +274,14 @@ class EmtSolver:
         cr = [c[0] for c in coup]
         cc = [c[1] for c in coup]
         self._Ycoup = sp.csr_matrix(([c[2] for c in coup], (cr, cc)), shape=(nb, nb))
-        self._Yfix = (sp.diags(self.g_base) + self._Ycoup).tocsr()
         self._vn_pos: IntArray = np.flatnonzero(self.kind == K_VN).astype(np.int64)
         self._vn_src = _Sources.from_elements([owner[i] for i in self._vn_pos], self._mods)
-        sw_pos = np.flatnonzero(self.kind == K_SW)
-        self.switches = SwitchSet.from_elements([owner[i] for i in sw_pos], list(sw_pos))
+        is_dev = (self.kind == K_SW) | np.array([e.kind == "LSAT" for e in owner], dtype=bool)
+        is_dev[list(self._sat_elements)] = True
+        sw_pos = np.flatnonzero(is_dev)
+        # the saturable magnetising branch of a transformer is its own LSAT element
+        sw_els = [self._sat_elements.get(int(i), owner[i]) for i in sw_pos]
+        self.switches = SwitchSet.from_elements(sw_els, list(sw_pos), dt)
         self._sw_index = {sid: j for j, sid in enumerate(self.switches.ids)}
         unknown = [v for v in self._misfire_spec if v not in self._sw_index]
         if unknown:
@@ -334,9 +344,17 @@ class EmtSolver:
         k1, m1, k2, m2 = el.nodes
         b1 = add(el, K_L, y, k1, m1, f"{el.id}.w1")
         b2 = add(el, K_L, a * a * y, k2, m2, f"{el.id}.w2")
-        coup.extend([(b1, b2, -a * y), (b2, b1, -a * y)])
+        self._xf.append((b1, b2, y, a))  # coupling -a y is built per tap position
+        self._xf_ids.append(el.id)
         if el.p("Lm_H") > 0.0:
-            add(el, K_L, self.dt / (2.0 * el.p("Lm_H")), k1, m1, f"{el.id}.m")
+            if el.p("Lsat_H") > 0.0:  # saturable magnetising branch (two-slope)
+                bm = add(el, K_L, 0.0, k1, m1, f"{el.id}.m")
+                self._sat_elements[bm] = Element(
+                    f"{el.id}.m", "LSAT", (k1, m1),
+                    {"L_H": el.p("Lm_H"), "Lsat_H": el.p("Lsat_H"),
+                     "I_knee_A": el.p("Im_knee_A")}, el.origin)
+            else:
+                add(el, K_L, self.dt / (2.0 * el.p("Lm_H")), k1, m1, f"{el.id}.m")
 
     def _check_floating(self) -> None:
         """Every unknown node needs a conductive path to ground or to a known node.
@@ -364,9 +382,9 @@ class EmtSolver:
                 "nút nổi (không có đường dẫn điện về đất hoặc nguồn áp): " + ", ".join(floating)
             )
 
-    def _topology(self, sw_on: BoolArray) -> _Topology:
-        """Factorised matrices for a switch-state combination (cached, SPEC S-05)."""
-        key = sw_on.tobytes()
+    def _topology(self, sw_on: BoolArray, taps: FloatArray) -> _Topology:
+        """Factorised matrices for a switch-state and tap combination (cached, SPEC S-05)."""
+        key = sw_on.tobytes() + taps.tobytes()
         top = self._lu_cache.get(key)
         if top is not None:
             return top
@@ -375,7 +393,16 @@ class EmtSolver:
         if len(self.switches):
             g[self.switches.pos] = self.switches.conductance(sw_on)
             h_sw[self.switches.pos] = self.switches.norton(sw_on)
-        Y = (sp.diags(g) + self._Ycoup).tocsr()
+        rows, cols, vals = [], [], []
+        for (b1, b2, y, a0), f in zip(self._xf, taps, strict=True):
+            a = a0 * float(f)
+            g[b2] = a * a * y
+            rows += [b1, b2]
+            cols += [b2, b1]
+            vals += [-a * y, -a * y]
+        nb = len(g)
+        Yx = sp.csr_matrix((vals, (rows, cols)), shape=(nb, nb))
+        Y = (sp.diags(g) + self._Ycoup + Yx).tocsr()
         G = (self._A @ Y @ self._A.T).tocsc()
         u, kn = self.unknown_nodes, self.known_nodes
         G_uu = G[u][:, u].tocsc()
@@ -409,6 +436,31 @@ class EmtSolver:
         except KeyError:
             raise SolverError(f"không có van/khóa '{device_id}'") from None
 
+    def transformer_index(self, xf_id: str) -> int:
+        try:
+            return self._xf_ids.index(xf_id)
+        except ValueError:
+            raise SolverError(f"không có MBA '{xf_id}'") from None
+
+    def set_tap(self, st: SolverState, j: int, factor: float) -> None:
+        """Change the ratio factor of transformer ``j`` (``a = a0 factor``) in the grid state
+        ``st``. The winding-1 current is reset to ``-i2/a`` (ideal-transformer constraint with
+        the load current kept); CDA follows. The tap-changer transition is not modelled."""
+        if factor == st.taps[j]:
+            return
+        b1, b2, _, a0 = self._xf[j]
+        st.taps[j] = factor
+        st.i_b[b1] = -st.i_b[b2] / (a0 * factor)
+        if self.cda:
+            st.cda_left = 2
+        self.markers.append((st.t, self._xf_ids[j], "tap"))
+
+    def command_switch(self, st: SolverState, j: int, close: bool, t: float) -> None:
+        """Order switch ``j`` to close or open at ``t`` (opens at current zero if it has
+        ``open_at_zero``)."""
+        st.dev.cmd_t[j] = t
+        st.dev.cmd_on[j] = close
+
     def fire(self, st: SolverState, j: int, t_on: float, t_off: float) -> None:
         """Set the gate window of thyristor ``j`` (index from :meth:`switch_index`)."""
         if self.switches.dev[j] != DEV_THYRISTOR:
@@ -440,7 +492,7 @@ class EmtSolver:
         st = SolverState(
             t=0.0, step=0, v=np.zeros(len(self.node_names)), i_b=i_b, v_b=v_b,
             dev=self.switches.initial_state(), cda_left=2 if self.cda else 0,
-            hist=self.lines.init_hist(),
+            hist=self.lines.init_hist(), taps=np.ones(len(self._xf)),
         )
         ns = len(self.switches)
         for j in range(ns):
@@ -452,24 +504,25 @@ class EmtSolver:
                     self.events.append(SwitchEvent(0.0, ch.id, ch.on))
         return st
 
-    def _history(self, st: SolverState, backward_euler: bool) -> FloatArray:
-        """History terms for the next (half-)step from branch states of ``st``."""
+    def _history(self, st: SolverState, backward_euler: bool, top: _Topology) -> FloatArray:
+        """History terms for the next (half-)step from branch states of ``st``; ``Y`` of the
+        present state (saturation segment, tap position) gives the inductor conductances."""
         h = np.zeros_like(st.i_b)
         isl, isc = self._isl, self._isc
         if backward_euler:
             h[isl] = st.i_b[isl]
             h[isc] = -self.g_base[isc] * st.v_b[isc]
         else:
-            yv = self._Yfix @ st.v_b
+            yv = top.Y @ st.v_b
             h[isl] = st.i_b[isl] + yv[isl]
             h[isc] = -st.i_b[isc] - yv[isc]
         return h
 
     def _solve(self, st: SolverState, t: float, backward_euler: bool) -> SolverState:
         """Advance ``st`` to time ``t`` with fixed topology; returns the new state."""
-        top = self._topology(st.dev.on)
+        top = self._topology(st.dev.on, st.taps)
         n = len(self.node_names)
-        h = self._history(st, backward_euler) + top.h_sw
+        h = self._history(st, backward_euler, top) + top.h_sw
         if len(self.lines):
             self.lines.history(st.hist, st.step, t, h)
         if len(self._vn_pos):

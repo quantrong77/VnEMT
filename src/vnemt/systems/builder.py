@@ -39,6 +39,7 @@ from vnemt.control.base import Controller
 from vnemt.control.epc import Epc6
 from vnemt.control.lcc import LccInverterControl, LccRectifierControl
 from vnemt.control.pll import PllSrf
+from vnemt.control.station import ReactivePowerControl, TapChangerControl
 from vnemt.model.grid import ConverterStation, DcLine, Grid
 from vnemt.model.netlist import Element
 from vnemt.power_electronics.lcc_bridge import six_pulse_bridge
@@ -96,7 +97,7 @@ def _station(grid: Grid, st: ConverterStation) -> tuple[list[Element], list[str]
     els.append(Element(f"{k}_Ls", "L", ls, {"L_H": st.smoothing_reactor_H}))
     for i, f in enumerate(st.filters, start=1):
         els += filter_branches(f"{k}_F{i}", bus, f.kind, f.Q_Mvar, ac.U_kV, ac.f_Hz,  # type: ignore[arg-type]
-                               h=f.h, q=f.q)
+                               h=f.h, q=f.q, h2=f.h2, switchable=f.switchable, closed=f.closed)
     return els, valves, bridges
 
 
@@ -151,6 +152,7 @@ def build_system(grid: Grid, setpoints: dict[str, list[tuple[float, str, float, 
     pll: list[Controller] = []
     ctrl: list[Controller] = []
     epc: list[Controller] = []
+    slow: list[Controller] = []
     recs = {s.pole: s for s in grid.stations.values() if s.role == "rectifier"}
     stations = sorted(grid.stations.values(), key=lambda s: s.role != "rectifier")
     for st in stations:
@@ -184,8 +186,21 @@ def build_system(grid: Grid, setpoints: dict[str, list[tuple[float, str, float, 
             epc.append(Epc6(f"{st.id}_EPC{b}", f"{st.id}_PLL", ids,
                             alpha_signal=f"{st.id}_CTRL.alpha",
                             offset_deg=0.0 if b == "Y" else 30.0))
+        if st.oltc is not None:
+            sig = f"{st.id}_CTRL.alpha" if st.role == "rectifier" else f"{st.id}_CTRL.Ud"
+            units = [f"{st.id}_T{b}{p}" for b in bridges for p in PH]
+            slow.append(TapChangerControl(f"{st.id}_TAP", sig, units, st.role, st.oltc))
+        if st.q_control is not None:
+            # one reactive power control per end: all switchable groups of the end's poles
+            sw = [(o.id, i, flt) for o in stations if o.end_id == st.end_id
+                  for i, flt in enumerate(o.filters, start=1) if flt.switchable]
+            breakers = [[f"{sid}_F{i}_{p}_CB" for p in PH] for sid, i, _ in sw]
+            closed0: list[bool] = [flt.closed for _, _, flt in sw]
+            slow.append(ReactivePowerControl(
+                f"{st.id}_QC", [f"{st.ac_system}_{p}.V" for p in PH],
+                [f"{st.ac_system}_L{p}.I" for p in PH], breakers, closed0, st.q_control))
     for ln in grid.dc_lines:
         els += _dc_line(grid, ln)
     for end, r in (grid.electrodes or {}).items():
         els.append(Element(f"{end}_RE", "R", (f"{end}_NEU", "gnd"), {"R_ohm": r}))
-    return els, pll + ctrl + epc
+    return els, pll + ctrl + epc + slow

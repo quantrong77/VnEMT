@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac", "SW", "D", "T", "XF1", "LINE"]
+ElementKind = Literal["R", "L", "C", "V_dc", "V_ac", "I_dc", "I_ac", "SW", "D", "T", "XF1", "LINE", "LSAT"]
 Param = float | tuple[float, ...]
 
 GROUND_NAMES: frozenset[str] = frozenset({"0", "gnd", "GND", "ground"})

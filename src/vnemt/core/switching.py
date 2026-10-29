@@ -16,9 +16,17 @@ thyristor on                ``i - I_H``                    falls below 0
 thyristor off, gated        ``v_AK - V_th``                > 0 inside the gate window
 thyristor off, t < t_q      ``v_AK - V_th``                > 0 before ``t_off + t_q``
                                                            (re-conduction without gate: CF)
-timed switch                ``t - t_cmd``                  command time reached
+timed switch                ``t - t_cmd``                  command time reached (schedule or a
+                                                           command from a controller)
 breaker armed to open       branch current ``i``           ``i`` changes sign
+saturable inductor          ``|i| - i_knee``               crosses zero (enters / leaves the
+                                                           saturated segment)
 ==========================  =============================  ==================================
+
+Saturable inductor ``LSAT`` (two-slope magnetising characteristic, symmetric): inductance
+``L_H`` for ``|i| < I_knee_A`` and ``Lsat_H`` above. Within a segment ``di/dt = v/L`` so the
+trapezoidal current integration needs no offset term; the branch is an inductor whose
+conductance ``dt/(2L)`` is set by the segment ("on" = saturated).
 
 Gate windows ``[fire_on, fire_off]`` of thyristors are set by the firing control
 (:meth:`vnemt.core.solver.EmtSolver.fire`) and may start anywhere inside a step, so the firing
@@ -49,7 +57,7 @@ FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
 BoolArray = NDArray[np.bool_]
 
-DEV_SWITCH, DEV_DIODE, DEV_THYRISTOR = 0, 1, 2
+DEV_SWITCH, DEV_DIODE, DEV_THYRISTOR, DEV_SAT = 0, 1, 2, 3
 R_ON_DEFAULT, R_OFF_DEFAULT = 1e-3, 1e6
 
 
@@ -64,9 +72,12 @@ class DeviceState:
     fire_off: FloatArray  # gate window end
     off_t: FloatArray  # last turn-off instant, -inf = never
     fwd_pending: BoolArray  # waiting for v_AK to become positive after turn-off
+    cmd_t: FloatArray  # pending controller command time (switches), inf = none
+    cmd_on: BoolArray  # pending command: close (True) / open (False)
 
     FIELDS: ClassVar[tuple[str, ...]] = (
-        "on", "armed", "sched_idx", "fire_on", "fire_off", "off_t", "fwd_pending",
+        "on", "armed", "sched_idx", "fire_on", "fire_off", "off_t", "fwd_pending", "cmd_t",
+        "cmd_on",
     )
 
     def copy(self) -> DeviceState:
@@ -102,9 +113,19 @@ class SwitchSet:
     sched_on: list[BoolArray]
 
     @classmethod
-    def from_elements(cls, els: list[Element], pos: list[int]) -> SwitchSet:
+    def from_elements(cls, els: list[Element], pos: list[int], dt: float = 0.0) -> SwitchSet:
         g_on, g_off, sched_t, sched_on = [], [], [], []
         for el in els:
+            if el.kind == "LSAT":
+                lm, ls, ik = el.p("L_H"), el.p("Lsat_H"), el.p("I_knee_A")
+                if not (0.0 < ls < lm and ik > 0.0):
+                    raise TopologyError(f"cuộn cảm bão hòa '{el.id}': cần 0 < Lsat_H < L_H và "
+                                        "I_knee_A > 0")
+                g_on.append(dt / (2.0 * ls))
+                g_off.append(dt / (2.0 * lm))
+                sched_t.append(np.zeros(0))
+                sched_on.append(np.zeros(0, dtype=bool))
+                continue
             r_on, r_off = el.p("R_on_ohm", R_ON_DEFAULT), el.p("R_off_ohm", R_OFF_DEFAULT)
             if not 0.0 < r_on < r_off:
                 raise TopologyError(
@@ -117,7 +138,7 @@ class SwitchSet:
             cmds.sort(key=lambda c: (c[0], c[1]))
             sched_t.append(np.array([c[0] for c in cmds], dtype=float))
             sched_on.append(np.array([c[1] for c in cmds], dtype=bool))
-        dev = {"SW": DEV_SWITCH, "D": DEV_DIODE, "T": DEV_THYRISTOR}
+        dev = {"SW": DEV_SWITCH, "D": DEV_DIODE, "T": DEV_THYRISTOR, "LSAT": DEV_SAT}
         return cls(
             ids=[e.id for e in els],
             pos=np.array(pos, dtype=np.int64),
@@ -126,7 +147,8 @@ class SwitchSet:
             g_off=np.array(g_off, dtype=float),
             vf=np.array([e.p("V_f_V") for e in els], dtype=float),
             vth=np.array([e.p("V_th_V") for e in els], dtype=float),
-            ih=np.array([e.p("I_H_A") for e in els], dtype=float),
+            ih=np.array([e.p("I_knee_A") if e.kind == "LSAT" else e.p("I_H_A") for e in els],
+                        dtype=float),
             tq=np.array([e.p("t_q_s") for e in els], dtype=float),
             open_at_zero=np.array([bool(e.p("open_at_zero")) for e in els], dtype=bool),
             initial_on=np.array([e.kind == "SW" and bool(e.p("closed")) for e in els],
@@ -148,6 +170,8 @@ class SwitchSet:
             fire_off=np.full(n, -np.inf),
             off_t=np.full(n, -np.inf),
             fwd_pending=np.zeros(n, dtype=bool),
+            cmd_t=np.full(n, np.inf),
+            cmd_on=np.zeros(n, dtype=bool),
         )
 
     def conductance(self, on: BoolArray) -> FloatArray:
@@ -190,6 +214,12 @@ class SwitchSet:
                     a0, a1 = v0[j] - self.vf[j], v1[j] - self.vf[j]
                     if a1 > 0.0:
                         lam[j] = _crossing(-a0, -a1)
+            elif dev == DEV_SAT:
+                a0, a1 = abs(i0[j]) - self.ih[j], abs(i1[j]) - self.ih[j]
+                if not ds.on[j] and a1 > 0.0:
+                    lam[j] = _crossing(-a0, -a1)
+                elif ds.on[j] and a1 < 0.0:
+                    lam[j] = _crossing(a0, a1)
             elif dev == DEV_THYRISTOR:
                 if ds.on[j]:
                     if i1[j] < self.ih[j]:
@@ -216,6 +246,8 @@ class SwitchSet:
                 cmd = self.next_command(j, int(ds.sched_idx[j]))
                 if cmd is not None and cmd[0] <= t1:
                     lam[j] = min(lam[j], max(cmd[0] - t0, 0.0) / h)
+                if ds.cmd_t[j] <= t1:
+                    lam[j] = min(lam[j], max(ds.cmd_t[j] - t0, 0.0) / h)
         return lam
 
     def apply(self, t: float, mask: BoolArray, ds: DeviceState) -> list[Change]:
@@ -228,10 +260,18 @@ class SwitchSet:
         for j in map(int, np.flatnonzero(mask)):
             new = bool(ds.on[j])
             gated = True
-            if self.dev[j] in (DEV_DIODE, DEV_THYRISTOR):
+            if self.dev[j] in (DEV_DIODE, DEV_THYRISTOR, DEV_SAT):
                 new = not ds.on[j]
                 if new and self.dev[j] == DEV_THYRISTOR:
                     gated = bool(ds.fire_on[j] - eps <= t <= ds.fire_off[j] + eps)
+            elif ds.cmd_t[j] <= t + 1e-15:  # command from a controller
+                ds.cmd_t[j] = np.inf
+                if ds.cmd_on[j]:
+                    new, ds.armed[j] = True, False
+                elif self.open_at_zero[j]:
+                    ds.armed[j] = True
+                else:
+                    new = False
             else:
                 cmd = self.next_command(j, int(ds.sched_idx[j]))
                 if cmd is not None and cmd[0] <= t + 1e-15:

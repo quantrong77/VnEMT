@@ -12,7 +12,8 @@ type          expansion
 ac_fault      per faulted phase a switch to an internal node, then ``r_ohm`` (+ ``x_ohm`` as an
               inductance) to ground (``3ph``, ``1ph`` = phase a, ``2phg`` = a, b) or between
               phases a and b (``2ph``)
-ac_dip        EMF of the AC system multiplied by ``1 - depth_pct/100`` during the dip
+ac_dip        EMF of the AC system multiplied by ``1 - depth_pct/100`` during the dip (a
+              negative depth is a voltage rise)
 dc_fault      pole-to-ground (or ``kind: pole_pole``) fault at the DC line node closest to
               ``position`` (0 = from end); Bergeron lines have nodes at their ends only;
               ``conductor`` selects the faulted conductor

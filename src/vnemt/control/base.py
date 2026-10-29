@@ -33,6 +33,12 @@ class ControlIO:
     def fire(self, valve: int, t_on: float, t_off: float) -> None:
         self.solver.fire(self.state, valve, t_on, t_off)
 
+    def set_tap(self, transformer: int, factor: float) -> None:
+        self.solver.set_tap(self.state, transformer, factor)
+
+    def switch(self, device: int, close: bool, t: float) -> None:
+        self.solver.command_switch(self.state, device, close, t)
+
 
 class Controller(ABC):
     """A control block group with its own state vector and published outputs."""

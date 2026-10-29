@@ -32,6 +32,7 @@ def save_snapshot(solver: EmtSolver, st: SolverState, path: str | Path) -> Path:
         f.attrs["t"] = st.t
         f.attrs["step"] = st.step
         f.attrs["cda_left"] = st.cda_left
+        f.create_dataset("taps", data=st.taps)
         for name in _NET:
             f.create_dataset(name, data=getattr(st, name))
         g = f.create_group("dev")
@@ -60,7 +61,12 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
                 "hãy chạy lại để tạo snapshot mới"
             )
         net = {name: np.asarray(f[name][()], dtype=float) for name in _NET}
-        dev = DeviceState(**{name: np.asarray(f["dev"][name][()]) for name in DeviceState.FIELDS})
+        dev_g = f["dev"]
+        init0 = solver.switches.initial_state()
+        n_dev = len(dev_g["on"])
+        dev = DeviceState(**{name: (np.asarray(dev_g[name][()]) if name in dev_g
+                                    else getattr(init0, name)[:n_dev])
+                             for name in DeviceState.FIELDS})
         ctrl = {name: np.asarray(f["ctrl"][name][()], dtype=float) for name in f["ctrl"]}
         hist = solver.lines.init_hist()
         if "hist" in f:
@@ -75,8 +81,11 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
         net["v_b"] = np.concatenate([net["v_b"], np.zeros(n_b - len(net["v_b"]))])
         init = solver.switches.initial_state()
         k = len(dev.on)
-        dev = DeviceState(**{name: np.concatenate([getattr(dev, name), getattr(init, name)[k:]])
-                             for name in DeviceState.FIELDS})
+        dev = DeviceState(**{
+            name: np.concatenate([getattr(dev, name), getattr(init, name)[k:]])
+            for name in DeviceState.FIELDS})
+        taps = np.asarray(f["taps"][()], dtype=float) if "taps" in f else np.ones(0)
+        taps = np.concatenate([taps, np.ones(len(solver._xf) - len(taps))])
         return SolverState(
             t=float(f.attrs["t"]),
             step=int(f.attrs["step"]),
@@ -84,5 +93,6 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
             dev=dev,
             ctrl=ctrl,
             hist=hist,
+            taps=taps,
             **net,
         )

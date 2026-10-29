@@ -318,7 +318,9 @@
                   "enum": [
                     "capacitor",
                     "single_tuned",
-                    "high_pass"
+                    "high_pass",
+                    "double_tuned",
+                    "c_type"
                   ]
                 },
                 "Q_Mvar": {
@@ -330,6 +332,16 @@
                 },
                 "q": {
                   "$ref": "#/$defs/positive"
+                },
+                "h2": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                },
+                "switchable": {
+                  "type": "boolean"
+                },
+                "closed": {
+                  "type": "boolean"
                 }
               }
             }
@@ -474,6 +486,76 @@
           },
           "end": {
             "$ref": "#/$defs/sys_id"
+          },
+          "oltc": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "step_pct": {
+                "$ref": "#/$defs/positive"
+              },
+              "alpha_band_deg": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "ud_ref_pu": {
+                "$ref": "#/$defs/positive"
+              },
+              "ud_band_pu": {
+                "$ref": "#/$defs/positive"
+              },
+              "t_delay_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "t_min_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "t_enable_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "q_control": {
+            "type": "object",
+            "required": [
+              "band_Mvar"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "band_Mvar": {
+                "$ref": "#/$defs/positive"
+              },
+              "t_delay_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "t_lock_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "T_q_s": {
+                "$ref": "#/$defs/positive"
+              },
+              "t_enable_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
           }
         }
       }
@@ -747,7 +829,7 @@
                 },
                 "depth_pct": {
                   "type": "number",
-                  "minimum": 0,
+                  "minimum": -50,
                   "maximum": 100
                 }
               }

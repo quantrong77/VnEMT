@@ -55,10 +55,13 @@ class ConverterTransformer:
 
 @dataclass(frozen=True)
 class AcFilter:
-    kind: str  # capacitor | single_tuned | high_pass
+    kind: str  # capacitor | single_tuned | high_pass | double_tuned | c_type
     Q_Mvar: float
     h: float | None = None
     q: float | None = None
+    h2: float | None = None
+    switchable: bool = False
+    closed: bool = True
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,8 @@ class ConverterStation:
     snubber: tuple[float, float] | None = None
     pole: str = "positive"
     end: str = ""  # station end (shares the DC neutral bus); default: the AC system id
+    oltc: Mapping[str, Any] | None = None  # tap changer control settings (F5-03)
+    q_control: Mapping[str, Any] | None = None  # filter switching settings (F5-05)
 
     @property
     def end_id(self) -> str:
@@ -206,13 +211,16 @@ def grid_from_case(data: Mapping[str, Any]) -> Grid:
             id=s["id"], type=s["type"], role=s["role"], ac_system=s["ac_system"],
             transformer=ConverterTransformer(**s["transformer"]),
             smoothing_reactor_H=s["smoothing_reactor_H"],
-            filters=tuple(AcFilter(f["type"], f["Q_Mvar"], f.get("h"), f.get("q"))
+            filters=tuple(AcFilter(f["type"], f["Q_Mvar"], f.get("h"), f.get("q"), f.get("h2"),
+                                   f.get("switchable", False), f.get("closed", True))
                           for f in s.get("filters", [])),
             control=LccControl(**ctl),
             valve={k: float(x) for k, x in v.items() if k != "snubber"},
             snubber=(sn["R_ohm"], sn["C_F"]) if sn else None,
             pole=s.get("pole", "positive"),
             end=s.get("end", ""),
+            oltc=s.get("oltc"),
+            q_control=s.get("q_control"),
         )
     dcn = data.get("dc_network", {})
     ends = {s.end_id for s in sts.values()}
@@ -258,6 +266,11 @@ def grid_from_case(data: Mapping[str, Any]) -> Grid:
                                 path="dc_network.lines")
             lines.append(DcLine(ln["id"], fr[0], to[0], model, ln["R_ohm"], ln["L_H"],
                                 ln["C_F"], ln.get("sections", 1)))
+    qc_ends = [s.end_id for s in sts.values() if s.q_control is not None]
+    dup = sorted({e for e in qc_ends if qc_ends.count(e) > 1})
+    if dup:
+        raise CaseError(f"mỗi đầu trạm chỉ một điều khiển Q (q_control); trùng ở: {', '.join(dup)}",
+                        path="converter_stations")
     for pole in sorted({s.pole for s in sts.values()}):
         roles = sorted(s.role for s in sts.values() if s.pole == pole)
         if roles != ["inverter", "rectifier"]:

@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau M4a.
+Cập nhật lần cuối: 29/10/2026 — sau M4b.
 
 ## Lõi giải và chất lượng
 
@@ -55,6 +55,18 @@ Cập nhật lần cuối: 29/10/2026 — sau M4a.
 | F2-06 | Đường dây lưỡng cực có ghép hỗ cảm | `core/lines.py` | `test_lines.py::test_two_conductor_induced_voltage_on_open_conductor`, `test_m4a_bipole.py::test_pole_to_ground_fault_induces_voltage_on_healthy_pole` | Đạt |
 | F5-01 | Hệ lưỡng cực LCC hoàn chỉnh | `cases/m4a_bipole.yaml` | `test_m4a_bipole.py` | Đạt |
 
+## MBA, lọc, Q, sóng hài (F5)
+
+| Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
+| --- | --- | --- | --- | --- |
+| F5-02 | MBA bão hòa, OLTC | `core/switching.py` (LSAT), `core/solver.py` (nấc) | `tests/core/test_saturation_taps.py`, TC-04 | Một phần — bão hòa hai đoạn; đổi nấc lý tưởng (không mô hình điện trở chuyển tiếp) |
+| F5-03 | Điều khiển nấc (α trong dải, Ud) | `control/station.py::TapChangerControl` | `test_tc04.py::test_tc04_tap_changer_brings_alpha_back_into_band` | Đạt |
+| F5-04 | Lọc kép điều chỉnh, thông cao, C-type, tụ | `components/filters.py` | `test_builder.py::test_double_tuned_and_c_type_filters` | Đạt |
+| F5-05 | Đóng cắt lọc theo Q, chống lặp | `control/station.py::ReactivePowerControl` | `test_tc04.py::test_tc04_filter_switching_keeps_station_q_in_band` | Đạt |
+| F5-06 | THD, Dn, TIF/IT, bảng có/không lọc | `analysis/harmonics.py` | `test_analysis_harmonics.py`, `test_tc04.py::test_tc04_harmonic_table_with_and_without_filters` | Một phần — THD, Dn, bảng so sánh đạt; TIF/IT cần bảng trọng số do người dùng cung cấp |
+| F5-07 | Quét tổng trở theo tần số | `analysis/freqscan.py` | `test_analysis_harmonics.py::test_frequency_scan_*` | Đạt (van coi như hở) |
+| F5-08 | FRT khi đóng cắt lọc, mất nhóm lọc | sự kiện + chỉ số FRT M3 | — | Chưa có case nghiệm thu riêng |
+
 ## Sự cố và FRT (F4)
 
 | Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
@@ -101,4 +113,5 @@ Cập nhật lần cuối: 29/10/2026 — sau M4a.
 | TC-10 | Xuất/nhập kết quả | Đạt phần tự động (sai lệch ≤ 7,6e-4 % toàn thang); mở bằng Enerplot cần kiểm thủ công |
 | TC-03 | Sụt áp nghịch lưu 10–30 % | Đạt — CF được đếm; CFPREV giảm tổng CF; phục hồi 90 % P ≤ 300 ms (205–264 ms) |
 | TC-09 | 50 sự cố từ snapshot | Đạt — bảng chỉ số đầy đủ, tái lập |
-| TC-04…TC-08 | | Chưa |
+| TC-04 | Lưỡng cực có OLTC, lọc, điều khiển Q, bảng sóng hài | Đạt (lưới chỉnh lưu SCR 5; với SCR 2,5 OLTC mất tác dụng, xem docs/design/M4.md mục 5) |
+| TC-05…TC-08 | | Chưa |

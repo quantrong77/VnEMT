@@ -141,3 +141,51 @@ def test_tc02_draft_case_validates_builds_and_runs(cases_dir: Path) -> None:
     case.data["case"]["solver"]["t_end_s"] = 0.02
     res = case.run()
     assert res.time[-1] == pytest.approx(0.02)
+
+
+def _impedance(els: list[Element], node: str, f: float) -> complex:
+    """Phase-a impedance of a filter network (series/parallel reduction by nodal solve)."""
+    w = 2 * np.pi * f
+    names = sorted({n for e in els for n in e.nodes if n != "gnd" and e.id.split("_")[1] == "a"})
+    idx = {n: i for i, n in enumerate(names)}
+    Y = np.zeros((len(names), len(names)), dtype=complex)
+    for e in els:
+        if e.id.split("_")[1] != "a" or e.kind == "SW":
+            continue
+        if e.kind == "R":
+            y: complex = 1 / e.p("R_ohm")
+        elif e.kind == "L":
+            y = 1 / (1j * w * e.p("L_H"))
+        else:
+            y = 1j * w * e.p("C_F")
+        a, b = e.nodes
+        for p, q_, s in ((a, a, 1), (b, b, 1), (a, b, -1), (b, a, -1)):
+            if p != "gnd" and q_ != "gnd":
+                Y[idx[p], idx[q_]] += s * y
+    rhs = np.zeros(len(names), dtype=complex)
+    rhs[idx[node]] = 1.0
+    return complex(np.linalg.solve(Y, rhs)[idx[node]])
+
+
+@pytest.mark.req("F5-04")
+@pytest.mark.parametrize(("kind", "h", "h2"), [("double_tuned", 11.0, 13.0),
+                                               ("double_tuned", 24.0, 36.0),
+                                               ("c_type", 3.0, None)])
+def test_double_tuned_and_c_type_filters(kind: str, h: float, h2: float | None) -> None:
+    u_kv, q = 345.0, 120.0
+    els = filter_branches("F", ("A", "B", "C"), kind, q, u_kv, F, h=h, h2=h2, q=1000.0)
+    z1 = _impedance(els, "A", F)
+    q_fund = (u_kv * 1e3) ** 2 / abs(z1.imag) / 1e6  # three-phase, |Z| ~ X at the fundamental
+    assert z1.imag < 0 and q_fund == pytest.approx(q, rel=1e-3)
+    for hn in [h] + ([h2] if h2 else []):
+        zt = abs(_impedance(els, "A", hn * F))
+        zn = min(abs(_impedance(els, "A", hn * F * k)) for k in (0.9, 1.1))
+        assert zt < 0.05 * zn  # sharp minimum at the tuning order
+
+
+def test_switchable_filter_has_breakers() -> None:
+    els = filter_branches("F", ("A", "B", "C"), "capacitor", 50.0, 345.0, F, switchable=True,
+                          closed=False)
+    cb = [e for e in els if e.kind == "SW"]
+    assert [e.id for e in cb] == ["F_a_CB", "F_b_CB", "F_c_CB"]
+    assert all(e.p("closed") == 0.0 and e.nodes[1].endswith("_in") for e in cb)
