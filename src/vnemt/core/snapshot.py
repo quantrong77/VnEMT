@@ -40,6 +40,9 @@ def save_snapshot(solver: EmtSolver, st: SolverState, path: str | Path) -> Path:
         c = f.create_group("ctrl")
         for name, arr in st.ctrl.items():
             c.create_dataset(name, data=arr)
+        hg = f.create_group("hist")
+        for name, arr in st.hist.items():
+            hg.create_dataset(name.replace("/", "_"), data=arr)
     return p
 
 
@@ -59,6 +62,12 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
         net = {name: np.asarray(f[name][()], dtype=float) for name in _NET}
         dev = DeviceState(**{name: np.asarray(f["dev"][name][()]) for name in DeviceState.FIELDS})
         ctrl = {name: np.asarray(f["ctrl"][name][()], dtype=float) for name in f["ctrl"]}
+        hist = solver.lines.init_hist()
+        if "hist" in f:
+            for name in hist:
+                key = name.replace("/", "_")
+                if key in f["hist"]:
+                    hist[name] = np.asarray(f["hist"][key][()], dtype=float)
         # event elements (appended after the base circuit) start in their initial state
         n_v, n_b = len(solver.node_names), len(solver.branches)
         net["v"] = np.concatenate([net["v"], np.zeros(n_v - len(net["v"]))])
@@ -74,5 +83,6 @@ def load_snapshot(solver: EmtSolver, path: str | Path) -> SolverState:
             cda_left=int(f.attrs["cda_left"]),
             dev=dev,
             ctrl=ctrl,
+            hist=hist,
             **net,
         )

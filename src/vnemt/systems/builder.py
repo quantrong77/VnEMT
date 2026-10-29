@@ -15,10 +15,15 @@ Station ``K``          valve-side nodes ``K_Y<x>`` (Yy0) and ``K_D<x>`` (Yd1, 12
 DC line ``L``          series ``L_R<k>``, ``L_L<k>``, shunt ``L_C<k>``
 =====================  ===================================================================
 
-Monopole with ground return: both station neutrals are grounded (electrodes come with M7).
-The rectifier bridges have their cathode terminal (P) towards the pole; the inverter bridges
-are connected the other way round (anode terminal N towards the pole), so the pole voltage is
-positive at both ends while ``Ud = v_P - v_N`` of the inverter bridges is negative.
+Poles and neutral: each station is one pole of one end. Without ``dc_network.electrodes``
+the station neutrals are ground; otherwise every end has a neutral bus ``<end>_NEU``, with an
+electrode resistance ``<end>_RE`` to ground where one is given (ground return, bipole) and
+floating otherwise (metallic return through a line conductor ``neutral:<end>``).
+
+Bridge orientation follows the current direction: the cathode terminal P points to the pole
+for the positive-pole rectifier and the negative-pole inverter, and to the neutral for the two
+others. The smoothing reactor current is measured in the direction of the converter current, so
+``Id > 0`` at every station, and controls use ``Ud = sign(pole) (v_DC - v_neutral)``.
 
 For a 12-pulse station the Yd1 bridge sees valve-side voltages lagging the AC bus by 30 deg,
 hence its EPC uses ``offset_deg = +30``.
@@ -57,6 +62,10 @@ def _ac_system(grid: Grid, sid: str) -> list[Element]:
     return els
 
 
+def neutral_node(grid: Grid, end: str) -> str:
+    return "gnd" if grid.electrodes is None else f"{end}_NEU"
+
+
 def _station(grid: Grid, st: ConverterStation) -> tuple[list[Element], list[str], list[str]]:
     """Elements, valve ids, and bridge prefixes of one station."""
     ac = grid.ac_systems[st.ac_system]
@@ -70,19 +79,20 @@ def _station(grid: Grid, st: ConverterStation) -> tuple[list[Element], list[str]
             f"{k}_T{b}", bus, tuple(f"{k}_{b}{p}" for p in PH), tr.S_MVA, tr.U1_kV,  # type: ignore[arg-type]
             tr.U2_kV, tr.xk_pu, ac.f_Hz, winding2="y" if b == "Y" else "d",
             lv_neutral=f"{k}_YN", tap=tr.tap)
-    # series connection: terminals from neutral (gnd) to the converter DC terminal
+    # series connection: terminals from the neutral to the converter DC terminal
     dc = f"{k}_DC"
-    nodes = ["gnd", f"{k}_MID", dc] if len(bridges) == 2 else ["gnd", dc]
+    neu = neutral_node(grid, st.end_id)
+    nodes = [neu, f"{k}_MID", dc] if len(bridges) == 2 else [neu, dc]
     valves: list[str] = []
     for i, b in enumerate(bridges):
         lo, hi = nodes[i], nodes[i + 1]
-        p, n = (hi, lo) if st.role == "rectifier" else (lo, hi)
+        p, n = (hi, lo) if st.p_at_pole else (lo, hi)
         bel, ids = six_pulse_bridge(f"{k}_{b}", tuple(f"{k}_{b}{q}" for q in PH),  # type: ignore[arg-type]
                                     p, n, valve=st.valve, snubber=st.snubber)
         els += bel
         valves += ids
     pole = f"{k}_POLE"
-    ls = (dc, pole) if st.role == "rectifier" else (pole, dc)
+    ls = (dc, pole) if st.p_at_pole else (pole, dc)
     els.append(Element(f"{k}_Ls", "L", ls, {"L_H": st.smoothing_reactor_H}))
     for i, f in enumerate(st.filters, start=1):
         els += filter_branches(f"{k}_F{i}", bus, f.kind, f.Q_Mvar, ac.U_kV, ac.f_Hz,  # type: ignore[arg-type]
@@ -90,7 +100,21 @@ def _station(grid: Grid, st: ConverterStation) -> tuple[list[Element], list[str]
     return els, valves, bridges
 
 
-def _dc_line(ln: DcLine) -> list[Element]:
+def _endpoint(grid: Grid, x: str) -> str:
+    return neutral_node(grid, x[len("neutral:"):]) if x.startswith("neutral:") else f"{x}_POLE"
+
+
+def _dc_line(grid: Grid, ln: DcLine) -> list[Element]:
+    if ln.model == "bergeron":
+        nodes = tuple(_endpoint(grid, x) for x in ln.from_ends + ln.to_ends)
+        n = len(ln.from_ends)
+        params: dict[str, float | tuple[float, ...]] = {
+            "length_km": ln.length_km,
+            "L_H_per_km": ln.L_H_per_km if n > 1 else ln.L_H_per_km[0],
+            "C_F_per_km": ln.C_F_per_km if n > 1 else ln.C_F_per_km[0],
+            "R_ohm_per_km": ln.R_ohm_per_km if len(ln.R_ohm_per_km) > 1 else ln.R_ohm_per_km[0],
+        }
+        return [Element(ln.id, "LINE", nodes, params)]
     a, b = f"{ln.from_station}_POLE", f"{ln.to_station}_POLE"
     n = ln.sections
     els: list[Element] = []
@@ -127,7 +151,7 @@ def build_system(grid: Grid, setpoints: dict[str, list[tuple[float, str, float, 
     pll: list[Controller] = []
     ctrl: list[Controller] = []
     epc: list[Controller] = []
-    rec = next((s for s in grid.stations.values() if s.role == "rectifier"), None)
+    recs = {s.pole: s for s in grid.stations.values() if s.role == "rectifier"}
     stations = sorted(grid.stations.values(), key=lambda s: s.role != "rectifier")
     for st in stations:
         sel, _, bridges = _station(grid, st)
@@ -138,23 +162,30 @@ def build_system(grid: Grid, setpoints: dict[str, list[tuple[float, str, float, 
         f = grid.ac_systems[st.ac_system].f_Hz
         pll.append(PllSrf(f"{st.id}_PLL", va, vb, vc, f0_Hz=f))
         id_sig, ud_sig = f"{st.id}_Ls.I", f"{st.id}_DC.V"
+        neu = neutral_node(grid, st.end_id)
+        ud_ref = None if neu == "gnd" else f"{neu}.V"
+        sign = 1.0 if st.pole == "positive" else -1.0
         v_n = grid.ac_systems[st.ac_system].U_kV * 1e3 * math.sqrt(2.0 / 3.0)
         if st.role == "rectifier":
             ctrl.append(LccRectifierControl(f"{st.id}_CTRL", id_sig, ud_sig, ib, ub,
                                             st.control, vm_signal=f"{st.id}_PLL.Vm", V_n=v_n,
-                                            setpoints=setpoints.get(st.id)))
+                                            setpoints=setpoints.get(st.id),
+                                            ud_ref_signal=ud_ref, ud_sign=sign))
         else:
-            assert rec is not None
+            rec = recs[st.pole]
             groups = [([f"{st.id}_{b}{i}" for i in range(1, 7)], 0.0 if b == "Y" else 30.0)
                       for b in bridges]
             ctrl.append(LccInverterControl(f"{st.id}_CTRL", id_sig, ud_sig,
                                            f"{rec.id}_CTRL.Id_ord", f"{st.id}_PLL", groups,
-                                           ib, ub, st.control, bus=(va, vb, vc), V_n=v_n))
+                                           ib, ub, st.control, bus=(va, vb, vc), V_n=v_n,
+                                           ud_ref_signal=ud_ref, ud_sign=sign))
         for b in bridges:
             ids = [f"{st.id}_{b}{i}" for i in range(1, 7)]
             epc.append(Epc6(f"{st.id}_EPC{b}", f"{st.id}_PLL", ids,
                             alpha_signal=f"{st.id}_CTRL.alpha",
                             offset_deg=0.0 if b == "Y" else 30.0))
     for ln in grid.dc_lines:
-        els += _dc_line(ln)
+        els += _dc_line(grid, ln)
+    for end, r in (grid.electrodes or {}).items():
+        els.append(Element(f"{end}_RE", "R", (f"{end}_NEU", "gnd"), {"R_ohm": r}))
     return els, pll + ctrl + epc

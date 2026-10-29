@@ -95,7 +95,7 @@ def test_grid_model_and_thevenin_impedance() -> None:
 def test_grid_model_errors_are_reported() -> None:
     d = _data()
     d["converter_stations"][1]["role"] = "rectifier"
-    with pytest.raises(CaseError, match="một chỉnh lưu, một nghịch lưu"):
+    with pytest.raises(CaseError, match="cực .positive.: cần đúng một chỉnh lưu và một nghịch lưu"):
         grid_from_case(d)
     d = _data()
     d["converter_stations"][0]["ac_system"] = "X"

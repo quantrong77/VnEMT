@@ -115,18 +115,39 @@ class ConverterStation:
     control: LccControl = LccControl()
     valve: Mapping[str, float] = field(default_factory=dict)
     snubber: tuple[float, float] | None = None
+    pole: str = "positive"
+    end: str = ""  # station end (shares the DC neutral bus); default: the AC system id
+
+    @property
+    def end_id(self) -> str:
+        return self.end or self.ac_system
+
+    @property
+    def p_at_pole(self) -> bool:
+        """Bridge cathode terminal (P) towards the pole line (rectifier +, inverter -)."""
+        return (self.role == "rectifier") == (self.pole == "positive")
 
 
 @dataclass(frozen=True)
 class DcLine:
+    """DC line. ``t``/``pi``: one conductor between two stations (lumped sections).
+    ``bergeron``: N conductors between ``from_ends`` and ``to_ends`` (station ids or
+    ``neutral:<end>``), per-km matrices (row-major) and length."""
+
     id: str
     from_station: str
     to_station: str
-    model: str  # t | pi
-    R_ohm: float
-    L_H: float
-    C_F: float
+    model: str  # t | pi | bergeron
+    R_ohm: float = 0.0
+    L_H: float = 0.0
+    C_F: float = 0.0
     sections: int = 1
+    from_ends: tuple[str, ...] = ()
+    to_ends: tuple[str, ...] = ()
+    length_km: float = 0.0
+    L_H_per_km: tuple[float, ...] = ()
+    C_F_per_km: tuple[float, ...] = ()
+    R_ohm_per_km: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -145,6 +166,7 @@ class Grid:
     stations: dict[str, ConverterStation]
     dc_lines: list[DcLine]
     base: DcBase | None
+    electrodes: dict[str, float] | None = None  # end -> electrode resistance; None: neutral = gnd
 
     @property
     def empty(self) -> bool:
@@ -189,17 +211,56 @@ def grid_from_case(data: Mapping[str, Any]) -> Grid:
             control=LccControl(**ctl),
             valve={k: float(x) for k, x in v.items() if k != "snubber"},
             snubber=(sn["R_ohm"], sn["C_F"]) if sn else None,
+            pole=s.get("pole", "positive"),
+            end=s.get("end", ""),
         )
+    dcn = data.get("dc_network", {})
+    ends = {s.end_id for s in sts.values()}
+    elec = dcn.get("electrodes")
+    if elec is not None:
+        unknown = [e for e in elec if e not in ends]
+        if unknown:
+            raise CaseError(f"điện cực ở đầu không tồn tại: {', '.join(unknown)} "
+                            f"(các đầu: {', '.join(sorted(ends))})", path="dc_network.electrodes")
+        if not elec:
+            raise CaseError("cần ít nhất một điện cực nối đất", path="dc_network.electrodes")
+
+    def endpoint_ok(x: str) -> bool:
+        if x.startswith("neutral:"):
+            return elec is not None and x[len("neutral:"):] in ends
+        return x in sts
+
     lines = []
-    for ln in data.get("dc_network", {}).get("lines", []):
-        for end in (ln["from"], ln["to"]):
-            if end not in sts:
-                raise CaseError(f"đường dây '{ln['id']}': không có trạm '{end}'",
+    for ln in dcn.get("lines", []):
+        fr = ln["from"] if isinstance(ln["from"], list) else [ln["from"]]
+        to = ln["to"] if isinstance(ln["to"], list) else [ln["to"]]
+        bad = [x for x in fr + to if not endpoint_ok(x)]
+        if bad:
+            raise CaseError(f"đường dây '{ln['id']}': đầu nối không hợp lệ {bad} (mã trạm, hoặc "
+                            "'neutral:<đầu>' khi có mục electrodes)", path="dc_network.lines")
+        model = ln.get("model", "pi")
+        if model == "bergeron":
+            if len(fr) != len(to):
+                raise CaseError(f"đường dây '{ln['id']}': số dây hai đầu khác nhau",
                                 path="dc_network.lines")
-        lines.append(DcLine(ln["id"], ln["from"], ln["to"], ln.get("model", "pi"),
-                            ln["R_ohm"], ln["L_H"], ln["C_F"], ln.get("sections", 1)))
-    roles = sorted(s.role for s in sts.values())
-    if sts and roles != ["inverter", "rectifier"]:
-        raise CaseError("phiên bản này hỗ trợ liên kết hai trạm: một chỉnh lưu, một nghịch lưu "
-                        "(MTDC ở M6)", path="converter_stations")
-    return Grid(acs, sts, lines, base)
+
+            def tup(v: Any) -> tuple[float, ...]:
+                return tuple(float(x) for x in (v if isinstance(v, list) else [v]))
+
+            lines.append(DcLine(ln["id"], fr[0], to[0], model, from_ends=tuple(fr),
+                                to_ends=tuple(to), length_km=float(ln["length_km"]),
+                                L_H_per_km=tup(ln["L_H_per_km"]),
+                                C_F_per_km=tup(ln["C_F_per_km"]),
+                                R_ohm_per_km=tup(ln.get("R_ohm_per_km", 0.0))))
+        else:
+            if len(fr) != 1 or len(to) != 1 or not all(x in sts for x in fr + to):
+                raise CaseError(f"đường dây '{ln['id']}': mô hình '{model}' nối hai trạm, một dây",
+                                path="dc_network.lines")
+            lines.append(DcLine(ln["id"], fr[0], to[0], model, ln["R_ohm"], ln["L_H"],
+                                ln["C_F"], ln.get("sections", 1)))
+    for pole in sorted({s.pole for s in sts.values()}):
+        roles = sorted(s.role for s in sts.values() if s.pole == pole)
+        if roles != ["inverter", "rectifier"]:
+            raise CaseError(f"cực '{pole}': cần đúng một chỉnh lưu và một nghịch lưu (MTDC ở M6)",
+                            path="converter_stations")
+    return Grid(acs, sts, lines, base, None if elec is None else dict(elec))

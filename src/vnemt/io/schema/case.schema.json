@@ -234,7 +234,8 @@
           },
           "pole": {
             "enum": [
-              "positive"
+              "positive",
+              "negative"
             ]
           },
           "transformer": {
@@ -470,6 +471,9 @@
                 "exclusiveMinimum": 0
               }
             }
+          },
+          "end": {
+            "$ref": "#/$defs/sys_id"
           }
         }
       }
@@ -486,20 +490,39 @@
             "required": [
               "id",
               "from",
-              "to",
-              "R_ohm",
-              "L_H",
-              "C_F"
+              "to"
             ],
             "properties": {
               "id": {
                 "$ref": "#/$defs/sys_id"
               },
               "from": {
-                "type": "string"
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                ]
               },
               "to": {
-                "type": "string"
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                ]
               },
               "model": {
                 "enum": [
@@ -524,12 +547,85 @@
               },
               "length_km": {
                 "$ref": "#/$defs/positive"
+              },
+              "L_H_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              },
+              "C_F_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              },
+              "R_ohm_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
               }
+            },
+            "if": {
+              "properties": {
+                "model": {
+                  "const": "bergeron"
+                }
+              },
+              "required": [
+                "model"
+              ]
+            },
+            "then": {
+              "required": [
+                "length_km",
+                "L_H_per_km",
+                "C_F_per_km"
+              ]
+            },
+            "else": {
+              "required": [
+                "R_ohm",
+                "L_H",
+                "C_F"
+              ]
             }
           }
         },
         "grounding": {
           "type": "object"
+        },
+        "electrodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
         }
       }
     },
@@ -699,6 +795,16 @@
                 "x_ohm": {
                   "type": "number",
                   "minimum": 0
+                },
+                "conductor": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "kind": {
+                  "enum": [
+                    "pole_ground",
+                    "pole_pole"
+                  ]
                 }
               }
             }
@@ -933,7 +1039,8 @@
             "SW",
             "D",
             "T",
-            "XF1"
+            "XF1",
+            "LINE"
           ]
         }
       },
@@ -1316,6 +1423,81 @@
               },
               "Lm_H": {
                 "$ref": "#/$defs/positive"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "LINE"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "length_km",
+              "L_H_per_km",
+              "C_F_per_km"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "type": true,
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 2
+              },
+              "length_km": {
+                "$ref": "#/$defs/positive"
+              },
+              "L_H_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              },
+              "C_F_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              },
+              "R_ohm_per_km": {
+                "oneOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 1
+                  }
+                ]
               }
             }
           }

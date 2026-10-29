@@ -125,11 +125,23 @@ _IDF, _IDP, _UDF, _UDP = 0, 1, 2, 3
 
 
 class _LccBase(Controller):
+    """Common measurements. ``Ud = ud_sign (v[ud_signal] - v[ud_ref_signal])`` (pole to
+    neutral voltage, positive for both poles); the reference signal is appended as the last
+    input when given."""
+
     def __init__(self, id: str, id_signal: str, ud_signal: str, I_base: float, U_base: float,
-                 c: LccControl) -> None:
+                 c: LccControl, ud_ref_signal: str | None = None, ud_sign: float = 1.0) -> None:
         super().__init__(id)
         self.id_sig, self.ud_sig = id_signal, ud_signal
         self.ib, self.ub, self.c = I_base, U_base, c
+        self.ud_ref, self.ud_sign = ud_ref_signal, ud_sign
+
+    def _ud(self, u: FloatArray) -> float:
+        v = float(u[1]) - (float(u[-1]) if self.ud_ref else 0.0)
+        return self.ud_sign * v
+
+    def _with_ref(self, sig: list[str]) -> list[str]:
+        return sig + ([self.ud_ref] if self.ud_ref else [])
 
     def _measure(self, x: FloatArray, id_a: float, ud_v: float, dt: float) -> tuple[float, float]:
         i, u = id_a / self.ib, ud_v / self.ub
@@ -146,8 +158,9 @@ class LccRectifierControl(_LccBase):
 
     def __init__(self, id: str, id_signal: str, ud_signal: str, I_base: float, U_base: float,
                  c: LccControl, vm_signal: str | None = None, V_n: float = 1.0,
-                 setpoints: list[tuple[float, str, float, float]] | None = None) -> None:
-        super().__init__(id, id_signal, ud_signal, I_base, U_base, c)
+                 setpoints: list[tuple[float, str, float, float]] | None = None,
+                 ud_ref_signal: str | None = None, ud_sign: float = 1.0) -> None:
+        super().__init__(id, id_signal, ud_signal, I_base, U_base, c, ud_ref_signal, ud_sign)
         self.vm_sig, self.vn = vm_signal, V_n
         self.id_changes = sorted((ts, v, r) for ts, prm, v, r in (setpoints or [])
                                  if prm == "Id_ref_pu")
@@ -155,7 +168,7 @@ class LccRectifierControl(_LccBase):
     # state: measurement (4) + [I_cc, e_prev, retard, t_retard_end, t_low, n_restart, armed,
     #        t_restart]
     def inputs(self) -> list[str]:
-        return [self.id_sig, self.ud_sig] + ([self.vm_sig] if self.vm_sig else [])
+        return self._with_ref([self.id_sig, self.ud_sig] + ([self.vm_sig] if self.vm_sig else []))
 
     def outputs(self) -> list[tuple[str, str]]:
         return [("alpha", "deg"), ("Id_ord", "pu"), ("Id", "pu"), ("Ud", "pu"),
@@ -184,10 +197,11 @@ class LccRectifierControl(_LccBase):
 
     def update(self, t: float, dt: float, x: FloatArray, u: FloatArray,
                io: ControlIO) -> FloatArray:
-        idf, udf = self._measure(x, float(u[0]), float(u[1]), dt)
+        ud = self._ud(u)
+        idf, udf = self._measure(x, float(u[0]), ud, dt)
         c = self.c
         vac = float(u[2]) / self.vn if self.vm_sig else 1.0
-        self._force_retard(t, x, float(u[1]) / self.ub, udf, vac)
+        self._force_retard(t, x, ud / self.ub, udf, vac)
         ref = scheduled(t, c.Id_ref_pu, self.id_changes)
         id_ref = ramp(t, c, ref) if x[11] < 0.0 else ramp(t, c, ref, float(x[11]))
         id_ord = min(id_ref, vdcol_limit(udf, c.vdcol))
@@ -210,8 +224,8 @@ class LccInverterControl(_LccBase):
     def __init__(self, id: str, id_signal: str, ud_signal: str, id_ord_signal: str,
                  pll: str, bridges: list[tuple[list[str], float]], I_base: float,
                  U_base: float, c: LccControl, bus: tuple[str, str, str] | None = None,
-                 V_n: float = 1.0) -> None:
-        super().__init__(id, id_signal, ud_signal, I_base, U_base, c)
+                 V_n: float = 1.0, ud_ref_signal: str | None = None, ud_sign: float = 1.0) -> None:
+        super().__init__(id, id_signal, ud_signal, I_base, U_base, c, ud_ref_signal, ud_sign)
         self.ord_sig = id_ord_signal
         self.pll = pll
         self.bus, self.vn = bus, V_n
@@ -228,7 +242,7 @@ class LccInverterControl(_LccBase):
     def inputs(self) -> list[str]:
         sig = [self.id_sig, self.ud_sig, self.ord_sig, f"{self.pll}.theta",
                f"{self.pll}.omega"]
-        return sig + (list(self.bus) if self.bus else [])
+        return self._with_ref(sig + (list(self.bus) if self.bus else []))
 
     def outputs(self) -> list[tuple[str, str]]:
         return [("alpha", "deg"), ("alpha_cc", "deg"), ("alpha_g", "deg"),
@@ -282,7 +296,7 @@ class LccInverterControl(_LccBase):
 
     def update(self, t: float, dt: float, x: FloatArray, u: FloatArray,
                io: ControlIO) -> FloatArray:
-        idf, udf = self._measure(x, float(u[0]), float(u[1]), dt)
+        idf, udf = self._measure(x, float(u[0]), self._ud(u), dt)
         c = self.c
         lo, hi = c.alpha_min_deg, c.alpha_max_deg
         id_ord = float(u[2]) - c.margin_pu

@@ -68,6 +68,7 @@ import scipy.sparse as sp
 from numpy.typing import NDArray
 from scipy.sparse.linalg import splu
 
+from vnemt.core.lines import LineSet
 from vnemt.core.switching import DEV_THYRISTOR, BoolArray, DeviceState, SwitchSet
 from vnemt.errors import SolverError, TopologyError
 from vnemt.model.netlist import Element, Netlist, is_ground
@@ -76,7 +77,7 @@ FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
 
 # Branch kind codes (kept as integers for Numba later).
-K_R, K_L, K_C, K_VN, K_SW = 0, 1, 2, 3, 4
+K_R, K_L, K_C, K_VN, K_SW, K_LINE = 0, 1, 2, 3, 4, 5
 
 MAX_EVENTS_PER_STEP = 100
 _LU_CACHE_MAX = 4096
@@ -132,6 +133,7 @@ class SolverState:
     dev: DeviceState  # switching devices
     cda_left: int = 0  # backward-Euler half steps still to take
     ctrl: dict[str, FloatArray] = field(default_factory=dict)  # control states (S-06)
+    hist: dict[str, FloatArray] = field(default_factory=dict)  # line history buffers
 
     @property
     def sw_on(self) -> BoolArray:
@@ -142,6 +144,7 @@ class SolverState:
             t=self.t, step=self.step, v=self.v.copy(), i_b=self.i_b.copy(),
             v_b=self.v_b.copy(), dev=self.dev.copy(), cda_left=self.cda_left,
             ctrl={k: a.copy() for k, a in self.ctrl.items()},
+            hist={k: a.copy() for k, a in self.hist.items()},
         )
 
 
@@ -217,6 +220,7 @@ class EmtSolver:
         bk: list[int] = []
         bm: list[int] = []
         coup: list[tuple[int, int, float]] = []  # off-diagonal entries of Y
+        self.lines = LineSet(dt)
         ideal_v: list[Element] = []
         isrc: list[Element] = []
 
@@ -246,6 +250,8 @@ class EmtSolver:
                 add(el, K_SW, 0.0, *n2)  # conductance set per switch state
             elif el.kind == "XF1":
                 self._add_transformer(el, add, coup)
+            elif el.kind == "LINE":
+                self.lines.add(el, lambda e, gb, k, m, nm: add(e, K_LINE, gb, k, m, nm), coup)
             else:
                 isrc.append(el)
 
@@ -434,6 +440,7 @@ class EmtSolver:
         st = SolverState(
             t=0.0, step=0, v=np.zeros(len(self.node_names)), i_b=i_b, v_b=v_b,
             dev=self.switches.initial_state(), cda_left=2 if self.cda else 0,
+            hist=self.lines.init_hist(),
         )
         ns = len(self.switches)
         for j in range(ns):
@@ -463,6 +470,8 @@ class EmtSolver:
         top = self._topology(st.dev.on)
         n = len(self.node_names)
         h = self._history(st, backward_euler) + top.h_sw
+        if len(self.lines):
+            self.lines.history(st.hist, st.step, t, h)
         if len(self._vn_pos):
             h[self._vn_pos] = -self.g_base[self._vn_pos] * self._vn_src(t)
         rhs = -(self._A @ h)
@@ -555,6 +564,7 @@ class EmtSolver:
                 cur = x
                 if abs(cur.t - T) <= tol:
                     cur.t, cur.step = T, target_step
+                    self.lines.push(cur.hist, target_step, cur.v_b, cur.i_b)
                     return cur
                 continue
             if nxt.t > T + tol:  # overshoot: interpolate back onto the grid
@@ -566,6 +576,7 @@ class EmtSolver:
             self._track(cur, out)
             if abs(out.t - T) <= tol:
                 out.t, out.step = T, target_step
+                self.lines.push(out.hist, target_step, out.v_b, out.i_b)
                 return out
             cur = out
 

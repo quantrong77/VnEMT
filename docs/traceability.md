@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau cải tiến phục hồi FRT.
+Cập nhật lần cuối: 29/10/2026 — sau M4a.
 
 ## Lõi giải và chất lượng
 
@@ -13,7 +13,8 @@ Cập nhật lần cuối: 29/10/2026 — sau cải tiến phục hồi FRT.
 | S-03 | Δt cố định 1–100 µs | schema `case.solver.dt_us` | `tests/io/test_case_loader.py` | Đạt |
 | S-04 | Nội suy thời điểm đóng cắt, sai số < 1 % Δt, cầu 6 xung không rung | `core/solver.py::step`, `core/switching.py` | `test_switching.py::test_half_wave_rl_rectifier_extinction_time_within_1pct_dt`, `::test_rc_charge_with_off_grid_switch_closing`, `::test_breaker_opens_at_next_current_zero`, `::test_diode_bridge_has_no_chatter` | Đạt |
 | S-05 | G thưa, LU lại khi đổi trạng thái van, bộ đệm LU | `core/solver.py::_topology` | `test_switching.py::test_lu_factorisations_are_cached_per_switch_state` | Đạt; TC-02 (95 nút, 24 van) chạy 1 s mô phỏng trong khoảng 24 s |
-| P-01 | Lưỡng cực 12 xung, 1 s, ≤ 2 phút | — | — | Đo gián tiếp: đơn cực khoảng 24 s/1 s, lưỡng cực ước tính khoảng 50 s; đo trực tiếp khi có lưỡng cực (M4) |
+| P-01 | Lưỡng cực 12 xung, 1 s, ≤ 2 phút | — | `cases/m4a_bipole.yaml` | Đạt — khoảng 35 s cho 1 s (189 nút, 48 van) |
+| Bergeron | Đường dây tham số phân bố 1 dây và nhiều dây (mode) | `core/lines.py` | `tests/core/test_lines.py` | Đạt (không phụ thuộc tần số; ULM ở v0.2) |
 | S-06 | Bộ giải điều khiển tuần tự sau mạng, trễ một bước, đa tốc độ | `control/base.py`, `core/simulate.py` | `tests/control/test_blocks_pll.py`, `test_snapshot.py::test_snapshot_includes_control_state` | Đạt — thứ tự khối theo khai báo (như PSCAD) |
 | S-07 | Phân vùng | — | — | Chưa (v0.2) |
 | S-08 | Khởi tạo: (a) từ 0 có ramp; (b) trào lưu; (c) snapshot | `core/solver.py` (a), `core/snapshot.py` (c) | `::test_ramp_source`, `test_snapshot.py::test_case_level_snapshot_roundtrip` | Một phần — (b) cần trào lưu (F6-07); tiêu chí xác lập ≤ 0,5 s kiểm ở TC-02 |
@@ -42,13 +43,25 @@ Cập nhật lần cuối: 29/10/2026 — sau cải tiến phục hồi FRT.
 | F1-L06 | Kháng san bằng, lọc DC | `systems/builder.py` | `test_builder.py` | Một phần — kháng san bằng xong; lọc DC ở M4 |
 | F3-01…F3-03 | CC, CEA vòng kín (γ theo IEC 60633), biên dòng, VDCOL, giới hạn | `control/lcc.py`, `control/blocks.py` | `test_builder.py::test_vdcol_and_ramp`, `tests/control/test_blocks_pll.py`, `tests/validation/test_tc02_cigre.py` | Một phần — điểm làm việc CC/CEA đạt (TC-02); kiểm thử hoán đổi vai trò khi U_AC chỉnh lưu giảm cần lịch sự kiện (M3) |
 
+## Cấu hình cực (F2, F5-01)
+
+| Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
+| --- | --- | --- | --- | --- |
+| F2-01 | Đơn cực về đất và dây kim loại hồi | `systems/builder.py`, `model/grid.py` | TC-02; `tests/validation/test_m4a_bipole.py::test_monopole_metallic_return` | Đạt |
+| F2-02 | Đơn cực đối xứng VSC | — | — | Chưa (M5) |
+| F2-03 | Lưỡng cực có điện cực, cân bằng/mất cân bằng | `systems/builder.py` | `::test_balanced_bipole_has_no_ground_current`, `::test_unbalanced_bipole_ground_current_is_pole_difference`, `test_events.py::test_bipole_orientation_and_pole_pole_fault` | Đạt — dòng đất 0,0 A khi cân bằng |
+| F2-04 | Chuyển chế độ khi mất cực (MRTB, GRTS) | — | — | Chưa (mức M) |
+| F2-05 | Hai nhóm 12 xung nối tiếp mỗi cực | — | — | Chưa (mức M) |
+| F2-06 | Đường dây lưỡng cực có ghép hỗ cảm | `core/lines.py` | `test_lines.py::test_two_conductor_induced_voltage_on_open_conductor`, `test_m4a_bipole.py::test_pole_to_ground_fault_induces_voltage_on_healthy_pole` | Đạt |
+| F5-01 | Hệ lưỡng cực LCC hoàn chỉnh | `cases/m4a_bipole.yaml` | `test_m4a_bipole.py` | Đạt |
+
 ## Sự cố và FRT (F4)
 
 | Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
 | --- | --- | --- | --- | --- |
 | F4-01 | Sự cố AC 1ph/2ph/2phg/3ph, R và X, cắt tại dòng qua 0 | `systems/events.py` | `tests/systems/test_events.py::test_ac_fault_expansion_kinds`, `::test_fault_from_snapshot_matches_continuous_run` | Đạt |
 | F4-02 | Sụt áp có kiểm soát | `systems/events.py`, `core/solver.py` (bộ nhân nguồn) | `::test_source_modulation_dips_amplitude`, TC-03 | Đạt |
-| F4-03 | Sự cố DC cực–đất tại vị trí bất kỳ | `systems/events.py` | `::test_dc_fault_picks_nearest_line_node` | Một phần — đặt tại nút gần nhất của mô hình đường dây; cực–cực ở M4 (lưỡng cực) |
+| F4-03 | Sự cố DC cực–đất, cực–cực | `systems/events.py` | `::test_dc_fault_picks_nearest_line_node`, `::test_bipole_orientation_and_pole_pole_fault`, `test_m4a_bipole.py::test_pole_to_ground_fault_induces_voltage_on_healthy_pole` | Đạt — vị trí tại nút của mô hình đường dây (Bergeron: hai đầu; chia đoạn để sự cố giữa tuyến) |
 | F4-04 | Ngắn mạch van, kích nhầm | `systems/events.py`, `EmtSolver.fire` | `::test_misfire_drops_one_pulse` | Một phần — ngắn mạch van và mất xung xong; ngắn mạch qua cầu dùng `ac_fault` với danh sách nút |
 | F4-05 | Sự cố trong MMC | — | — | Chưa (M5) |
 | F4-06 | Lịch sự kiện | `systems/events.py`, schema `events` | `::test_dip_setpoint_and_misfire_expansion` | Đạt (đóng cắt, sự cố, điểm đặt Id_ref); đóng cắt lọc ở M4 |

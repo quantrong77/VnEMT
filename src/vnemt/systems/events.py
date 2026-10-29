@@ -13,7 +13,9 @@ ac_fault      per faulted phase a switch to an internal node, then ``r_ohm`` (+ 
               inductance) to ground (``3ph``, ``1ph`` = phase a, ``2phg`` = a, b) or between
               phases a and b (``2ph``)
 ac_dip        EMF of the AC system multiplied by ``1 - depth_pct/100`` during the dip
-dc_fault      pole-to-ground fault at the DC line node closest to ``position`` (0 = from end)
+dc_fault      pole-to-ground (or ``kind: pole_pole``) fault at the DC line node closest to
+              ``position`` (0 = from end); Bergeron lines have nodes at their ends only;
+              ``conductor`` selects the faulted conductor
 valve_short   switch across the valve
 misfire       the valve's first gate window after ``t_s`` is dropped
 setpoint      control set-point change (``param`` of station ``station``) with a ramp
@@ -69,10 +71,19 @@ def _bus_nodes(ev: Mapping[str, Any], grid: Grid, k: int) -> tuple[list[str], fl
                     path=f"events[{k}].location")
 
 
-def _dc_node(ev: Mapping[str, Any], grid: Grid, k: int) -> str:
+def _dc_node(ev: Mapping[str, Any], grid: Grid, k: int, conductor: int = 0) -> str:
     line = next((ln for ln in grid.dc_lines if ln.id == ev.get("line")), None)
     if line is None:
         raise CaseError(f"không có đường dây DC '{ev.get('line')}'", path=f"events[{k}].line")
+    if line.model == "bergeron":  # no internal nodes: the end closest to ``position``
+        from vnemt.systems.builder import neutral_node
+
+        ends = line.from_ends if float(ev.get("position", 0.0)) < 0.5 else line.to_ends
+        if conductor >= len(ends):
+            raise CaseError(f"đường dây '{line.id}' có {len(ends)} dây",
+                            path=f"events[{k}].conductor")
+        x = ends[conductor]
+        return neutral_node(grid, x[8:]) if x.startswith("neutral:") else f"{x}_POLE"
     n = line.sections
     cand = [(0.0, f"{line.from_station}_POLE"), (1.0, f"{line.to_station}_POLE")]
     if line.model == "t":
@@ -117,9 +128,14 @@ def expand_events(events: list[Mapping[str, Any]], grid: Grid,
             for p in PH:
                 out.modulations.setdefault(f"{loc}_V{p}", []).append((t0, t1, fac))
         elif typ == "dc_fault":
-            node = _dc_node(ev, grid, k)
+            cond = int(ev.get("conductor", 0))
+            node = _dc_node(ev, grid, k, cond)
             out.elements.append(_switch(f"{eid}_S", node, f"{eid}_F", t0, t1))
-            out.elements += _impedance(eid, f"{eid}_F", "gnd", ev, 50.0)
+            if ev.get("kind", "pole_ground") == "pole_pole":  # to the other pole conductor
+                other = _dc_node(ev, grid, k, 1 if cond == 0 else 0)
+                out.elements += _impedance(eid, f"{eid}_F", other, ev, 50.0)
+            else:
+                out.elements += _impedance(eid, f"{eid}_F", "gnd", ev, 50.0)
         elif typ in ("valve_short", "misfire"):
             v = str(ev["valve"])
             if valves is not None and v not in valves:

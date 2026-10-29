@@ -63,11 +63,6 @@ class Case:
         if self.data.get("dc_network", {}).get("grounding"):
             raise CaseError("mục 'dc_network.grounding' chưa được mô phỏng (dự kiến mốc M7)",
                             path="dc_network.grounding", source=src)
-        for ln in self.data.get("dc_network", {}).get("lines", []):
-            if ln.get("model") == "bergeron":
-                raise CaseError(f"đường dây '{ln['id']}': mô hình Bergeron dự kiến ở mốc M4 "
-                                "(F2-06); dùng 'pi' hoặc 't'", path="dc_network.lines",
-                                source=src)
         if "circuit" not in self.data and self.grid().empty:
             raise CaseError("case không có mục 'circuit' hay hệ thống HVDC để mô phỏng",
                             source=src)

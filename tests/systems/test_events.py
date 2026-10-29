@@ -161,3 +161,26 @@ def test_sweep_helpers(tmp_path: Path) -> None:
     with pytest.raises(CaseError, match="danh sách khác rỗng"):
         load_sweep(p)
     assert load_yaml("x: 1e-3") == {"x": 1e-3}
+
+
+# ------------------------------------------------------------------ bipole structure
+@pytest.mark.req("F2-03")
+@pytest.mark.req("F4-03")
+def test_bipole_orientation_and_pole_pole_fault(cases_dir: Path) -> None:
+    from vnemt.systems.builder import build_system
+
+    data = load_case(cases_dir / "m4a_bipole.yaml").data
+    g = grid_from_case(data)
+    els = {e.id: e for e in build_system(g)[0]}
+    # cathode terminal P towards the pole for rectifier + and inverter -, else the neutral
+    assert els["RECP_Y1"].nodes == ("RECP_Ya", "RECP_MID")  # anode a, cathode MID (upper)
+    assert els["RECP_D1"].nodes[1] == "RECP_DC"
+    assert els["RECN_D1"].nodes[1] == "RECN_MID" and els["RECN_Y1"].nodes[1] == "ACR_NEU"
+    assert els["RECP_Ls"].nodes == ("RECP_DC", "RECP_POLE")
+    assert els["RECN_Ls"].nodes == ("RECN_POLE", "RECN_DC")
+    assert els["ACR_RE"].nodes == ("ACR_NEU", "gnd")
+    assert els["DCL"].nodes == ("RECP_POLE", "RECN_POLE", "INVP_POLE", "INVN_POLE")
+    ev = expand_events([{"type": "dc_fault", "line": "DCL", "position": 1.0, "kind": "pole_pole",
+                         "r_ohm": 1.0, "t_s": 0.1, "duration_ms": 10}], g)
+    assert ev.elements[0].nodes == ("INVP_POLE", "EV1_F")
+    assert ev.elements[1].nodes == ("EV1_F", "INVN_POLE")
