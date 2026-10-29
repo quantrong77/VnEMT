@@ -2,7 +2,9 @@
 
 Phần mềm mô phỏng quá độ điện từ (EMT) cho hệ thống điện, có tính năng tương tự PSCAD/EMTDC. Phiên bản đầu (v0.1) tập trung vào **truyền tải điện một chiều HVDC**; các phiên bản sau mở rộng sang phân tích lưới miền phasor, quy hoạch – vận hành lưới truyền tải và nghiên cứu runback/run-up HVDC.
 
-> **Trạng thái:** đặc tả và bộ khung phát triển — chưa có mã chạy được. Mã nguồn được xây dựng dần theo các mốc M0 → M9 trong [đặc tả](docs/SPEC-v0.1.md#11-lộ-trình-phát-triển), dùng Claude Code trong VS Code.
+> **Trạng thái:** đã xong M0 → M4b (lõi EMT, LCC, sự cố/FRT, lưỡng cực, OLTC, lọc AC, sóng hài); tiếp theo M4c. Mã nguồn được xây dựng dần theo các mốc M0 → M9 trong [đặc tả](docs/SPEC-v0.1.md#11-lộ-trình-phát-triển), dùng Claude Code trong VS Code. Ma trận truy xuất: [docs/traceability.md](docs/traceability.md).
+>
+> **Chạy thử trên trình duyệt** (không cần cài đặt): <https://quantrong77.github.io/VnEMT/> — chạy các case mẫu trong `cases/`, sửa YAML, xem dạng sóng, tải CSV. Trang được dựng lại tự động khi đẩy lên `main` ([web/](web/), workflow `pages.yml`).
 
 ## Tính năng theo đặc tả
 

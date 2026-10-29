@@ -10,3 +10,4 @@ results/
 .coverage
 # Tài liệu đào tạo tham khảo (bản quyền tác giả) - không đưa vào kho mã
 docs/hvdc_phuongpq2026/
+web/_site/

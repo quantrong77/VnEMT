@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VnEMT chạy thử</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1f21; --muted: #5f6368; --line: #dcdcd7;
+  --accent: #0b6e4f; --accent-text: #ffffff; --err: #b3261e; --code: #f1f1ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171a; --panel: #1e2125; --text: #e6e6e3; --muted: #a0a4a8; --line: #33373c;
+    --accent: #3fb68b; --accent-text: #0d1512; --err: #f2867d; --code: #191b1f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header, main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+header h1 { margin: 0 0 4px; font-size: 22px; }
+header p { margin: 0; color: var(--muted); }
+a { color: var(--accent); }
+.grid { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+label { display: block; font-weight: 600; margin: 10px 0 4px; }
+select, input, textarea, button { font: inherit; color: var(--text); }
+select, input[type=number] { width: 100%; padding: 6px 8px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; }
+textarea { width: 100%; height: 320px; padding: 8px; resize: vertical; background: var(--code);
+  border: 1px solid var(--line); border-radius: 6px;
+  font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre; }
+button { padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent);
+  color: var(--accent-text); font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.muted { color: var(--muted); font-size: 13px; }
+#status { margin-top: 10px; font-size: 14px; }
+#status.err { color: var(--err); }
+#signals { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 10px; font-size: 13px; }
+#signals label { display: inline-flex; gap: 4px; font-weight: 400; margin: 0; }
+#plot { width: 100%; min-height: 420px; }
+#meta { font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap;
+  color: var(--muted); max-height: 160px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VnEMT — chạy thử trên trình duyệt</h1>
+  <p>Mô phỏng quá độ điện từ (EMT) cho HVDC, chạy hoàn toàn trong trình duyệt bằng Pyodide
+    (Python + NumPy + SciPy). Không gửi dữ liệu đi đâu. Mã nguồn và hướng dẫn:
+    <a href="https://github.com/quantrong77/VnEMT">github.com/quantrong77/VnEMT</a>.</p>
+</header>
+<main class="grid">
+  <section class="panel">
+    <label for="case">Case mẫu</label>
+    <select id="case" disabled></select>
+    <div id="desc" class="muted"></div>
+    <label for="tend">Thời gian mô phỏng t_end [s]</label>
+    <input id="tend" type="number" min="0.001" step="0.01">
+    <div class="muted">Trình duyệt chậm hơn bản cài đặt khoảng 2–4 lần. Các case lưỡng cực
+      (m4a, tc04) mất vài phút cho 1,5 s; giảm t_end để xem nhanh.</div>
+    <label for="yaml">Nội dung case (YAML, sửa được)</label>
+    <textarea id="yaml" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" disabled>Chạy</button>
+      <button id="reset" class="ghost" disabled>Khôi phục case</button>
+    </div>
+    <div id="status">Đang khởi động Pyodide…</div>
+  </section>
+  <section class="panel">
+    <div class="row" style="margin-top:0">
+      <strong>Tín hiệu</strong>
+      <button id="csv" class="ghost" disabled>Tải CSV</button>
+    </div>
+    <div id="signals" class="muted">Chưa có kết quả.</div>
+    <div id="plot"></div>
+    <details><summary class="muted">Thông tin chạy (phiên bản, tham số solver)</summary>
+      <div id="meta"></div></details>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const worker = new Worker("worker.js");
+let manifest = null, original = "", result = null, timer = null;
+
+function status(text, err = false) {
+  $("status").textContent = text;
+  $("status").className = err ? "err" : "";
+}
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+async function loadCase(file) {
+  const c = manifest.cases.find((x) => x.file === file);
+  original = await (await fetch("cases/" + file)).text();
+  $("yaml").value = original;
+  $("tend").value = c.t_end_s;
+  $("desc").textContent = `${c.description} — dt = ${c.dt_us} µs`;
+}
+
+function plot() {
+  const names = [...document.querySelectorAll("#signals input:checked")].map((x) => x.value);
+  if (!result || names.length === 0) { Plotly.purge("plot"); return; }
+  const traces = names.map((n, i) => ({
+    x: result.t, y: result.signals[n], name: n, type: "scattergl", mode: "lines",
+    line: { width: 1.2 }, xaxis: "x", yaxis: i === 0 ? "y" : "y" + (i + 1),
+  }));
+  const layout = {
+    grid: { rows: names.length, columns: 1, shared_xaxes: true, ygap: 0.25 },
+    height: Math.max(420, 170 * names.length), margin: { l: 70, r: 10, t: 10, b: 40 },
+    paper_bgcolor: css("--panel"), plot_bgcolor: css("--panel"),
+    font: { color: css("--text"), size: 12 }, showlegend: false,
+  };
+  names.forEach((n, i) => {
+    const ax = i === 0 ? "yaxis" : "yaxis" + (i + 1);
+    const u = result.units[n] ? ` [${result.units[n]}]` : "";
+    layout[ax] = { title: { text: n + u, font: { size: 11 } }, gridcolor: css("--line"),
+                   zerolinecolor: css("--line") };
+    const xa = i === 0 ? "xaxis" : "xaxis" + (i + 1);
+    layout[xa] = { matches: i === 0 ? undefined : "x", gridcolor: css("--line"),
+                   showticklabels: i === names.length - 1,
+                   title: i === names.length - 1 ? { text: "t [s]" } : undefined };
+  });
+  Plotly.react("plot", traces, layout, { responsive: true, displaylogo: false });
+}
+
+function showResult(d) {
+  result = d;
+  const names = Object.keys(d.signals);
+  $("signals").innerHTML = "";
+  names.forEach((n, i) => {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="checkbox" value="${n}" ${i < 4 ? "checked" : ""}> ${n}`;
+    l.querySelector("input").addEventListener("change", plot);
+    $("signals").appendChild(l);
+  });
+  $("csv").disabled = false;
+  $("meta").textContent = JSON.stringify(d.meta, null, 1);
+  plot();
+}
+
+function downloadCsv() {
+  const names = Object.keys(result.signals);
+  const rows = ["time," + names.join(",")];
+  result.t.forEach((t, k) => rows.push([t, ...names.map((n) => result.signals[n][k])].join(",")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
+  a.download = ($("case").value || "vnemt").replace(".yaml", "") + ".csv";
+  a.click();
+}
+
+worker.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type === "status") status(m.text);
+  else if (m.type === "ready") {
+    status(`Sẵn sàng (VnEMT ${m.version}). Chọn case và bấm Chạy.`);
+    ["case", "run", "reset"].forEach((id) => ($(id).disabled = false));
+  } else if (m.type === "result") {
+    clearInterval(timer);
+    $("run").disabled = false;
+    const d = m.data;
+    const dec = d.step > 1 ? `, hiển thị 1/${d.step} mẫu` : "";
+    status(`Xong: ${d.n_samples} mẫu trong ${d.elapsed_s.toFixed(1)} s${dec}.`);
+    showResult(d);
+  } else if (m.type === "error") {
+    clearInterval(timer);
+    $("run").disabled = false;
+    status("Lỗi: " + m.text, true);
+    console.error(m.detail);
+  }
+};
+
+$("case").addEventListener("change", (e) => loadCase(e.target.value));
+$("reset").addEventListener("click", () => { $("yaml").value = original; });
+$("csv").addEventListener("click", downloadCsv);
+$("run").addEventListener("click", () => {
+  $("run").disabled = true;
+  const t0 = performance.now();
+  status("Đang mô phỏng… 0 s");
+  timer = setInterval(() => status(`Đang mô phỏng… ${((performance.now() - t0) / 1000).toFixed(0)} s`), 1000);
+  const t = parseFloat($("tend").value);
+  worker.postMessage({ type: "run", yaml: $("yaml").value, tEnd: isFinite(t) ? t : null });
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", plot);
+
+(async () => {
+  try {
+    manifest = await (await fetch("manifest.json")).json();
+    for (const c of manifest.cases) {
+      const o = document.createElement("option");
+      o.value = c.file; o.textContent = `${c.name}`;
+      $("case").appendChild(o);
+    }
+    const first = manifest.cases.find((c) => c.name === "tc01_bridge6") || manifest.cases[0];
+    $("case").value = first.file;
+    await loadCase(first.file);
+    worker.postMessage({ type: "init", wheelUrl: new URL(manifest.wheel, location.href).href });
+  } catch (e) {
+    status("Không tải được manifest: " + e, true);
+  }
+})();
+</script>
+</body>
+</html>
