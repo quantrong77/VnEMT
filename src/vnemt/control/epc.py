@@ -5,8 +5,8 @@ fed by phase voltages ``v_a = V sin(theta)`` (PLL convention, :mod:`vnemt.contro
 valve numbering in firing order (1 a+, 2 c-, 3 b+, 4 a-, 5 c+, 6 b-), valve ``k`` (k = 1..6)
 has its natural commutation at ``theta = 30 deg + (k - 1) 60 deg`` (rising zero of the
 commutating line voltage ``v_ac, v_bc, v_ba, v_ca, v_cb, v_ab``). ``offset_deg`` adds the
-phase shift of the converter transformer (e.g. -30 deg for the Y/D bridge of a 12-pulse
-group, so both bridges together give 12 pulses 30 deg apart).
+phase lag of the valve-side voltages behind the measured bus voltages (e.g. +30 deg for the
+Yd1 bridge of a 12-pulse group, so both bridges together give 12 pulses 30 deg apart).
 
 Valve ``k`` is fired when the PLL angle, extrapolated with the PLL frequency inside the next
 step, reaches::
@@ -17,9 +17,12 @@ so the firing instant is computed exactly inside the step and handed to the solv
 off-grid gate window of width ``pulse_deg`` (S-04); the pulse spacing does not depend on
 ``dt``.
 
-At the first run (deblocking) every valve whose gate window is already open, i.e. whose
-target angle was passed less than ``pulse_deg`` ago, is gated immediately for the remainder of
-its window; otherwise a whole valve group could stay without gate pulses for up to 60 deg.
+Late firing: a valve whose target angle has already been passed by less than ``pulse_deg``
+and which has not been fired for more than ``360 deg - pulse_deg`` is fired at once for the
+remainder of its window. This covers deblocking (otherwise a whole valve group could stay
+without pulses for up to 60 deg) and fast decreases of the alpha order, which move the target
+behind the PLL angle within one step; without it the valve would miss its pulse for a whole
+cycle (misfire), which at an inverter causes a commutation failure.
 
 Reference: J. Arrillaga, *High Voltage Direct Current Transmission*, 2nd ed., IEE, 1998,
 ch. 5 (firing control); IEC 60633.
@@ -68,7 +71,7 @@ class Epc6(Controller):
         return [("alpha", "deg")]
 
     def init_state(self) -> FloatArray:
-        return np.zeros(1)  # [deblocked flag]
+        return np.full(6, -1e9)  # last firing instant of each valve
 
     def bind(self, solver: EmtSolver) -> None:
         self._idx = [solver.switch_index(v) for v in self.valves]
@@ -79,13 +82,13 @@ class Epc6(Controller):
         alpha_deg = float(u[2]) if self.alpha_signal else float(self.alpha_deg or 0.0)
         alpha = math.radians(alpha_deg)
         tol = 1e-9 * omega * dt
-        start = x[0] == 0.0
-        x[0] = 1.0
+        rearm = (2.0 * math.pi - self.pulse) / omega
         for k, j in enumerate(self._idx):
             target = math.radians(30.0) + self.offset + alpha + k * math.pi / 3.0
             phi = wrap_2pi(theta - target)  # angle already travelled past the target
-            if start and tol <= phi < self.pulse:
+            if tol <= phi < self.pulse and t - x[k] > rearm:
                 io.fire(j, t, t + (self.pulse - phi) / omega)
+                x[k] = t
                 continue
             if phi < tol:
                 t_fire = t
@@ -95,4 +98,5 @@ class Epc6(Controller):
                     continue
                 t_fire = t + tau
             io.fire(j, t_fire, t_fire + self.pulse / omega)
+            x[k] = t_fire
         return np.array([alpha_deg])

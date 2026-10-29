@@ -32,11 +32,21 @@ def test_pi_integrates_and_antiwindup_releases_immediately() -> None:
         e_prev = 1.0
     assert i == pytest.approx(10.0 * (0.1 - dt / 2))
     assert y == pytest.approx(2.0 + i)
-    for _ in range(1000):  # saturate at hi = 3
+    for _ in range(1000):  # saturate at hi = 3: the integrator stops at hi - Kp e = 1
         y, i = pi_step(i, e_prev, 1.0, kp=2.0, ki=10.0, dt=dt, hi=3.0)
     assert y == 3.0 and i == pytest.approx(1.0)
     y, i = pi_step(i, 1.0, -1.0, kp=2.0, ki=10.0, dt=dt, hi=3.0)
     assert y < 0.0  # no windup memory
+
+
+def test_pi_large_proportional_error_does_not_drag_integrator() -> None:
+    """A large error that saturates the output through Kp alone must not move the
+    integrator beyond its limits: when the error vanishes the output returns to I."""
+    i = 160.0
+    y, i = pi_step(i, 0.0, 2.0, kp=150.0, ki=3000.0, dt=2e-5, lo=95.0, hi=165.0)
+    assert y == 165.0 and 95.0 <= i <= 165.0
+    y, i = pi_step(i, 2.0, 0.0, kp=150.0, ki=3000.0, dt=2e-5, lo=95.0, hi=165.0)
+    assert y == pytest.approx(i) and y > 150.0
 
 
 def test_rate_limit_and_wrap() -> None:
@@ -68,3 +78,33 @@ def test_pll_locks_to_phase_and_frequency(phase_deg: float, f_src: float) -> Non
     assert np.max(np.abs(np.degrees(err))) < 0.01
     assert np.max(np.abs(res["PLL.f"][last] - f_src)) < 1e-3
     assert res["PLL.Vm"][-1] == pytest.approx(100.0)
+
+
+@pytest.mark.req("F1-L03")
+def test_epc_fires_late_when_alpha_order_drops_within_a_step() -> None:
+    """alpha order 60 -> 20 deg between two steps: the targets jump behind the PLL angle, the
+    valves must still fire (late) in that cycle, never miss it."""
+    from vnemt.control.base import ControlIO
+    from vnemt.control.epc import Epc6
+
+    fired: list[tuple[int, float]] = []
+
+    class Io:
+        def fire(self, j: int, t_on: float, t_off: float) -> None:
+            fired.append((j, t_on))
+
+    epc = Epc6("E", "PLL", [f"V{i}" for i in range(6)], alpha_signal="a")
+    epc._idx = list(range(6))
+    x = epc.init_state()
+    w, dt = 2 * math.pi * 50, 20e-6
+    io = Io()
+    t = 0.0
+    while t < 0.04:
+        alpha = 60.0 if t < 0.0251 else 20.0
+        th = wrap_2pi(w * t)
+        epc.update(t, dt, x, np.array([th, w, alpha]), io)  # type: ignore[arg-type]
+        t += dt
+    for j in range(6):
+        times = [tf for jj, tf in fired if jj == j and tf > 0.005]
+        assert all(np.diff(times) < 1.2 / 50), (j, np.diff(times))
+    _ = ControlIO  # interface used by the real solver

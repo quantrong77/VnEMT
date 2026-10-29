@@ -12,20 +12,20 @@ import numpy as np
 import scipy
 
 from vnemt import __version__
+from vnemt.control.base import Controller
 from vnemt.control.factory import build_controllers
 from vnemt.core.simulate import simulate
 from vnemt.core.snapshot import load_snapshot
 from vnemt.core.solver import EmtSolver
 from vnemt.errors import CaseError
 from vnemt.io.case_loader import CaseFile, load_case, parse_case
+from vnemt.model.grid import Grid, grid_from_case
 from vnemt.model.netlist import Netlist, build_netlist
 from vnemt.results import Result
+from vnemt.systems.builder import build_system
 
 # Sections accepted by the schema but not yet simulated, with the milestone that adds them.
 _PENDING_SECTIONS = {
-    "ac_systems": "M2",
-    "converter_stations": "M2",
-    "dc_network": "M4",
     "events": "M3",
 }
 _SUPPORTED_FORMATS = ("hdf5", "csv")
@@ -61,8 +61,17 @@ class Case:
                     f"{milestone}); hiện chỉ chạy được mục 'circuit'",
                     path=key, source=src,
                 )
-        if "circuit" not in self.data:
-            raise CaseError("case không có mục 'circuit' để mô phỏng", source=src)
+        if self.data.get("dc_network", {}).get("grounding"):
+            raise CaseError("mục 'dc_network.grounding' chưa được mô phỏng (dự kiến mốc M7)",
+                            path="dc_network.grounding", source=src)
+        for ln in self.data.get("dc_network", {}).get("lines", []):
+            if ln.get("model") == "bergeron":
+                raise CaseError(f"đường dây '{ln['id']}': mô hình Bergeron dự kiến ở mốc M4 "
+                                "(F2-06); dùng 'pi' hoặc 't'", path="dc_network.lines",
+                                source=src)
+        if "circuit" not in self.data and self.grid().empty:
+            raise CaseError("case không có mục 'circuit' hay hệ thống HVDC để mô phỏng",
+                            source=src)
         mode = self.data["case"].get("init", {}).get("mode", "zero")
         if mode == "loadflow":
             raise CaseError(
@@ -82,8 +91,23 @@ class Case:
     def formats(self) -> list[str]:
         return list(self.data.get("outputs", {}).get("format", ["hdf5"]))
 
+    def grid(self) -> Grid:
+        """System-level model (shared with the phasor core)."""
+        return grid_from_case(self.data)
+
     def netlist(self) -> Netlist:
-        return build_netlist(self.data)
+        """User circuit elements plus the expansion of the system sections."""
+        net = build_netlist(self.data)
+        grid = self.grid()
+        if not grid.empty:
+            net.elements.extend(build_system(grid)[0])
+        return net
+
+    def controllers(self) -> list[Controller]:
+        """Generated station controls first, then the user ``controls`` in order."""
+        grid = self.grid()
+        gen = [] if grid.empty else build_system(grid)[1]
+        return gen + build_controllers(self.data.get("controls", []))
 
     def resolve(self, path: str) -> Path:
         """Resolve a path given in the case relative to the case file's directory."""
@@ -111,7 +135,7 @@ class Case:
             decimate=int(out.get("decimate", 1)),
             start=start,
             snapshot=(float(snap["t_s"]), self.resolve(snap["file"])) if snap else None,
-            controllers=build_controllers(self.data.get("controls", [])),
+            controllers=self.controllers(),
         )
         res.meta = self.provenance()
         res.meta["lu_factorizations"] = solver.stats.lu_factorizations

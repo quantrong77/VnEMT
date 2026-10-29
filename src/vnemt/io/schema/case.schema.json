@@ -162,17 +162,319 @@
     "ac_systems": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": [
+          "id",
+          "U_kV",
+          "scr",
+          "angle_deg"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/sys_id"
+          },
+          "U_kV": {
+            "$ref": "#/$defs/positive"
+          },
+          "f_Hz": {
+            "$ref": "#/$defs/positive"
+          },
+          "scr": {
+            "$ref": "#/$defs/positive"
+          },
+          "angle_deg": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 90
+          },
+          "P_dc_MW": {
+            "$ref": "#/$defs/positive"
+          },
+          "U_pu": {
+            "$ref": "#/$defs/positive"
+          },
+          "phase_deg": {
+            "type": "number"
+          }
+        }
       }
     },
     "converter_stations": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "role",
+          "ac_system",
+          "transformer",
+          "smoothing_reactor_H"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/sys_id"
+          },
+          "type": {
+            "enum": [
+              "lcc_6pulse",
+              "lcc_12pulse"
+            ]
+          },
+          "role": {
+            "enum": [
+              "rectifier",
+              "inverter"
+            ]
+          },
+          "ac_system": {
+            "type": "string"
+          },
+          "pole": {
+            "enum": [
+              "positive"
+            ]
+          },
+          "transformer": {
+            "type": "object",
+            "required": [
+              "S_MVA",
+              "U1_kV",
+              "U2_kV",
+              "xk_pu"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "S_MVA": {
+                "$ref": "#/$defs/positive"
+              },
+              "U1_kV": {
+                "$ref": "#/$defs/positive"
+              },
+              "U2_kV": {
+                "$ref": "#/$defs/positive"
+              },
+              "xk_pu": {
+                "$ref": "#/$defs/positive"
+              },
+              "tap": {
+                "$ref": "#/$defs/positive"
+              }
+            }
+          },
+          "smoothing_reactor_H": {
+            "$ref": "#/$defs/positive"
+          },
+          "valve": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "R_on_ohm": {
+                "$ref": "#/$defs/positive"
+              },
+              "R_off_ohm": {
+                "$ref": "#/$defs/positive"
+              },
+              "V_f_V": {
+                "type": "number",
+                "minimum": 0
+              },
+              "t_q_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "snubber": {
+                "type": "object",
+                "required": [
+                  "R_ohm",
+                  "C_F"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "R_ohm": {
+                    "$ref": "#/$defs/positive"
+                  },
+                  "C_F": {
+                    "$ref": "#/$defs/positive"
+                  }
+                }
+              }
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "Q_Mvar"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "capacitor",
+                    "single_tuned",
+                    "high_pass"
+                  ]
+                },
+                "Q_Mvar": {
+                  "$ref": "#/$defs/positive"
+                },
+                "h": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                },
+                "q": {
+                  "$ref": "#/$defs/positive"
+                }
+              }
+            }
+          },
+          "control": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "Id_ref_pu": {
+                "type": "number"
+              },
+              "Id_start_pu": {
+                "type": "number"
+              },
+              "ramp_start_s": {
+                "type": "number"
+              },
+              "ramp_s": {
+                "type": "number"
+              },
+              "alpha_min_deg": {
+                "type": "number"
+              },
+              "alpha_max_deg": {
+                "type": "number"
+              },
+              "alpha_start_deg": {
+                "type": "number"
+              },
+              "kp_deg": {
+                "type": "number"
+              },
+              "ki_deg": {
+                "type": "number"
+              },
+              "T_id_s": {
+                "type": "number"
+              },
+              "T_ud_up_s": {
+                "type": "number"
+              },
+              "T_ud_down_s": {
+                "type": "number"
+              },
+              "gamma_ref_deg": {
+                "type": "number"
+              },
+              "margin_pu": {
+                "type": "number"
+              },
+              "ki_gamma": {
+                "type": "number"
+              },
+              "vdcol": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "u_low",
+                      "u_high",
+                      "i_low"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "u_low": {
+                        "type": "number"
+                      },
+                      "u_high": {
+                        "type": "number"
+                      },
+                      "i_low": {
+                        "type": "number"
+                      },
+                      "i_high": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "dc_network": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "from",
+              "to",
+              "R_ohm",
+              "L_H",
+              "C_F"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/sys_id"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "model": {
+                "enum": [
+                  "pi",
+                  "t",
+                  "bergeron"
+                ]
+              },
+              "R_ohm": {
+                "type": "number",
+                "minimum": 0
+              },
+              "L_H": {
+                "$ref": "#/$defs/positive"
+              },
+              "C_F": {
+                "$ref": "#/$defs/positive"
+              },
+              "sections": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "length_km": {
+                "$ref": "#/$defs/positive"
+              }
+            }
+          }
+        },
+        "grounding": {
+          "type": "object"
+        }
+      }
     },
     "events": {
       "type": "array",
@@ -814,6 +1116,11 @@
           }
         }
       ]
+    },
+    "sys_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+      "description": "Letters and digits only: generated node names use '_' as separator."
     }
   }
 }

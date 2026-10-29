@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau mốc M2a.
+Cập nhật lần cuối: 29/10/2026 — M2b phần 1 (TC-02 chưa đạt).
 
 ## Lõi giải và chất lượng
 
@@ -34,11 +34,12 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M2a.
 | Mã | Yêu cầu | Mã nguồn | Kiểm thử | Trạng thái |
 | --- | --- | --- | --- | --- |
 | F1-L01 | Cầu 6 xung, Ud khớp công thức < 1 % | `power_electronics/lcc_bridge.py` | `tests/validation/test_tc01_bridge6.py::test_tc01_alpha_sweep` | Đạt — sai lệch ≤ 0,16 % Ud0 trên dải α 0–150° (chuẩn hóa theo Ud0 vì Ud → 0 tại 90°) |
-| F1-L02 | Cầu 12 xung, MBA Y/Y và Y/Δ, không còn bậc 5, 7 | `components/transformer.py` (MBA) | `tests/core/test_transformer.py` | Một phần — MBA Yy0/Yd1 đạt (tỉ số, lệch −30°, dòng ngắn mạch); cầu 12 xung ở M2b |
+| F1-L02 | Cầu 12 xung, MBA Y/Y và Y/Δ, không còn bậc 5, 7 | `components/transformer.py`, `systems/builder.py` | `tests/core/test_transformer.py`, `tests/systems/test_builder.py::test_twelve_pulse_cancels_5th_and_7th_harmonics` | Đạt — bậc 5, 7 < 1 % I1; Ud hai cầu khớp công thức < 1 % |
 | F1-L03 | EPC + PLL, lệch khoảng cách xung < 0,1° | `control/pll.py`, `control/epc.py` | `test_blocks_pll.py::test_pll_locks_to_phase_and_frequency`, `test_tc01_alpha_sweep`, `::test_tc01_firing_independent_of_time_step`, `::test_tc01_deblock_without_overvoltage` | Đạt — lệch đo được < 0,001°, không phụ thuộc Δt |
 | F1-L04 | Đo μ, γ từng van; γ khớp công thức < 0,5° | `analysis/lcc.py` | `test_tc01_alpha_sweep` | Đạt — γ sai < 0,04° với α ≥ 120°. γ thực tế bị vết khía chuyển mạch chặn khi γ > ~60° − μ, nên công thức chỉ áp dụng cho nghịch lưu |
 | F1-L05 | Phát hiện sự cố chuyển mạch | `core/switching.py` (marker `cf`) | `::test_tc01_commutation_failure_when_tq_exceeds_extinction_time` | Một phần — phát hiện qua t_q; đếm theo trạm và FRT ở M3 |
-| F1-L06, F3-01…03 | Kháng san bằng, CC/CEA/VDCOL | — | — | Chưa (M2b) |
+| F1-L06 | Kháng san bằng, lọc DC | `systems/builder.py` | `test_builder.py` | Một phần — kháng san bằng xong; lọc DC ở M4 |
+| F3-01…F3-03 | CC, CEA, biên dòng, VDCOL, giới hạn | `control/lcc.py`, `control/blocks.py` | `test_builder.py::test_vdcol_and_ramp`, `tests/control/test_blocks_pll.py` | Một phần — đã có mã và kiểm thử đơn vị; đặc tính Ud–Id và hoán đổi vai trò chưa kiểm được vì TC-02 chưa ổn định |
 
 ## Dữ liệu vào/ra
 
@@ -54,7 +55,7 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M2a.
 | Mục | Mã nguồn | Trạng thái |
 | --- | --- | --- |
 | Netlist mức mạch, định danh nút dạng chuỗi, không phụ thuộc lõi giải | `model/netlist.py` | Đạt |
-| Mô hình bus-branch + mở rộng sang Netlist | `model/grid.py` | Chưa — thiết kế khi bắt đầu M2 (lưới AC Thevenin) để v0.4 dùng lại |
+| Mô hình mức hệ thống (hệ AC Thevenin, trạm LCC, đường dây DC) + mở rộng sang Netlist | `model/grid.py`, `systems/builder.py` | Một phần — dùng cho EMT; bus-branch đầy đủ (nút, nhánh AC, máy phát, tải) bổ sung ở v0.4 |
 
 ## Case nghiệm thu
 
@@ -63,4 +64,5 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M2a.
 | M0 | `vnemt run cases/m0_rlc_series.yaml` | Đạt — `tests/test_cli.py`, CI |
 | M1 | V1, V2 cho mạch thụ động và chỉnh lưu diode (`cases/m1_diode_bridge.yaml`) | Đạt — Ud sai lệch < 1 % so với công thức, μ sai lệch < 0,5°, hội tụ khi giảm Δt; S-02 đạt theo SPEC r3 |
 | TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
-| TC-02…TC-10 | | Chưa |
+| TC-02 | CIGRE benchmark (`cases/tc02_cigre_lcc.yaml`, bản nháp) | **Chưa đạt** — chạy được nhưng chưa xác lập; cần số liệu gốc CIGRE (docs/design/M2.md mục 9) |
+| TC-03…TC-10 | | Chưa |

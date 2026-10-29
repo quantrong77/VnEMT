@@ -7,7 +7,9 @@ network discretisation.
 Block              Discrete equation
 =================  ==========================================================================
 PI                 ``I_k = I_{k-1} + Ki dt (e_k + e_{k-1})/2``; ``y = Kp e_k + I_k``, clamped
-                   to ``[lo, hi]``; anti-windup: ``I_k`` is clamped to ``[lo, hi] - Kp e_k``
+                   to ``[lo, hi]``; anti-windup by conditional integration: while ``e`` drives the
+                   output into a limit the integrator rises at most until ``Kp e + I``
+                   reaches it and is never pulled back; ``I_k`` stays in ``[lo, hi]``
 first order        ``y_k = ((2T - dt) y_{k-1} + dt (u_k + u_{k-1})) / (2T + dt)`` (1/(1+sT))
 rate limiter       ``y_k = y_{k-1} + clip(u_k - y_{k-1}, -fall dt, rise dt)``
 Clarke             ``v_alpha = (2/3)(a - (b + c)/2)``, ``v_beta = (b - c)/sqrt3``
@@ -28,7 +30,12 @@ def pi_step(i_prev: float, e_prev: float, e: float, kp: float, ki: float, dt: fl
             lo: float = -math.inf, hi: float = math.inf) -> tuple[float, float]:
     """One PI step; returns ``(y, I_new)``."""
     i_new = i_prev + ki * dt * 0.5 * (e + e_prev)
-    i_new = min(max(i_new, lo - kp * e), hi - kp * e)
+    y_free = kp * e + i_new
+    if y_free > hi and ki * e > 0.0:  # integrate only up to the limit, never pull back
+        i_new = max(i_prev, hi - kp * e)
+    elif y_free < lo and ki * e < 0.0:
+        i_new = min(i_prev, lo - kp * e)
+    i_new = min(max(i_new, lo), hi)
     y = min(max(kp * e + i_new, lo), hi)
     return y, i_new
 
