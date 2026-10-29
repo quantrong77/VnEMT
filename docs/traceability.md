@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau mốc M3.
+Cập nhật lần cuối: 29/10/2026 — sau cải tiến phục hồi FRT.
 
 ## Lõi giải và chất lượng
 
@@ -54,7 +54,7 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M3.
 | F4-06 | Lịch sự kiện | `systems/events.py`, schema `events` | `::test_dip_setpoint_and_misfire_expansion` | Đạt (đóng cắt, sự cố, điểm đặt Id_ref); đóng cắt lọc ở M4 |
 | F4-07 | Force retard, khử ion, khởi động lại | `control/lcc.py::LccRectifierControl` | thử thủ công (docs/design/M3.md 3.2) | Một phần — chạy đúng chuỗi; phát hiện không phân biệt CF nghịch lưu nên mặc định tắt; **chưa có kiểm thử tự động** |
 | F4-08 | CFPREV | `control/lcc.py::LccInverterControl` | `test_tc03_tc09.py::test_tc03_cf_counted_and_reduced_by_cfprev` | Đạt theo tiêu chí TC-03 (giảm tổng CF 36 → 22); không tránh được đợt CF đầu |
-| Chỉ số FRT | CF, phục hồi 90 % P, đỉnh Id/Ud, U_AC, đạt/không đạt theo `criteria` | `analysis/frt.py` | `::test_frt_metrics_on_synthetic_record` | Đạt — **phục hồi sau sự cố chậm (> 0,4 s), cần cải tiến điều khiển** |
+| Chỉ số FRT | CF, phục hồi 90 % P (công suất trung bình một chu kỳ), đỉnh Id/Ud, U_AC, đạt/không đạt theo `criteria` | `analysis/frt.py` | `::test_frt_metrics_on_synthetic_record` | Đạt — phục hồi 205–264 ms sau sụt áp 10–30 % (docs/design/M3.md mục 4) |
 
 ## Dữ liệu vào/ra
 
@@ -86,6 +86,6 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M3.
 | TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
 | TC-02 | Hệ LCC kiểu CIGRE, cấu hình VnEMT (`cases/tc02_cigre_lcc.yaml`, SPEC r4) | Đạt — Id 1,000 pu, γ 15,00°, α 14,6°, P 983 MW, xác lập ≈ 0,8 s; TC-02b (CIGRE nguyên bản) chờ số liệu gốc |
 | TC-10 | Xuất/nhập kết quả | Đạt phần tự động (sai lệch ≤ 7,6e-4 % toàn thang); mở bằng Enerplot cần kiểm thủ công |
-| TC-03 | Sụt áp nghịch lưu 10–30 % | Đạt — CF được đếm; CFPREV giảm tổng CF 36 → 22 (không giảm số đợt) |
+| TC-03 | Sụt áp nghịch lưu 10–30 % | Đạt — CF được đếm; CFPREV giảm tổng CF; phục hồi 90 % P ≤ 300 ms (205–264 ms) |
 | TC-09 | 50 sự cố từ snapshot | Đạt — bảng chỉ số đầy đủ, tái lập |
 | TC-04…TC-08 | | Chưa |

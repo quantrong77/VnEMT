@@ -40,7 +40,8 @@ converter_stations:
       - {type: single_tuned, h: 13, Q_Mvar: 150}
       - {type: high_pass, h: 24, Q_Mvar: 175}
       - {type: capacitor, Q_Mvar: 150}
-    control: {alpha_min_deg: 95, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+    control: {alpha_min_deg: 110, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+              fast_k: 8, fast_e_pu: 0.02,
               kp_deg: 36.1, ki_deg: 2344, kp_gamma: 0.7506, ki_gamma: 30,
               cfprev: true}
 dc_network:

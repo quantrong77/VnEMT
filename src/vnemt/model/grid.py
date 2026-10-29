@@ -78,6 +78,8 @@ class LccControl:
     T_ud_up_s: float = 0.04
     T_ud_down_s: float = 0.01
     vdcol: tuple[float, float, float, float] | None = (0.4, 0.9, 0.55, 1.0)  # u_lo, u_hi, i_lo, i_hi
+    fast_k: float = 1.0  # integral gain factor for large current errors (fast release)
+    fast_e_pu: float = 0.05  # rectifier |error| above which fast_k applies
     gamma_ref_deg: float = 15.0
     margin_pu: float = 0.1
     kp_gamma: float = 0.7506  # deg per deg (CIGRE benchmark, to be checked)

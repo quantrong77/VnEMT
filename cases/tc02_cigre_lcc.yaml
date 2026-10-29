@@ -16,6 +16,8 @@
 #         alpha selection; VDCOL) with VnEMT gains: CC Kp = 60 deg/pu, Ti = 25 ms (the
 #         benchmark's Ti = 9.1 ms oscillates at 10 Hz on this DC circuit), gamma loop
 #         Kp = 0.75, Ki = 30 1/s, inverter CC Kp = 36.1 deg/pu, Ti = 15.4 ms
+#         inverter fast release (Ki x 8 when Id exceeds its order by > 0.02 pu) and
+#         alpha_min = 110 deg: 90 % power recovery after 10-30 % dips in about 0.2-0.26 s
 case:
   name: tc02_cigre_lcc
   description: Hệ LCC đơn cực 12 xung kiểu CIGRE, cấu hình VnEMT (TC-02)
@@ -52,7 +54,8 @@ converter_stations:
       - {type: single_tuned, h: 13, Q_Mvar: 150}
       - {type: high_pass, h: 24, Q_Mvar: 175}
       - {type: capacitor, Q_Mvar: 150}
-    control: {alpha_min_deg: 95, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+    control: {alpha_min_deg: 110, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+              fast_k: 8, fast_e_pu: 0.02,
               kp_deg: 36.1, ki_deg: 2344, kp_gamma: 0.7506, ki_gamma: 30}
 dc_network:
   lines:

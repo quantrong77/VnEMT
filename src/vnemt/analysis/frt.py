@@ -9,8 +9,9 @@ cf_gamma           commutations with gamma < ``gamma_cf_deg`` or not completed b
                    commutating voltage reversed (inverter control, criterion 2)
 cf_episodes        commutation-failure episodes: failure instants of both criteria grouped
                    when closer than ``episode_gap_s`` (default two cycles, 40 ms)
-recovery_ms        time after fault clearing until the DC power at the rectifier stays at or
-                   above 90 % of its pre-fault mean (nan: not recovered within the record)
+recovery_ms        time after fault clearing until the DC power at the rectifier, averaged over
+                   one cycle (the instantaneous power carries the 12-pulse ripple), stays at
+                   or above 90 % of its pre-fault mean (nan: not recovered within the record)
 Id_max_pu          peak DC current after the fault (rectifier smoothing reactor)
 Ud_max_pu          peak absolute DC voltage at the rectifier terminal
 Uac_min_pu,        smallest / largest one-cycle RMS of the inverter AC bus phase voltages after
@@ -62,6 +63,13 @@ def _episodes(times: list[float], gap: float) -> int:
     return n
 
 
+def _mean_cycle(t: np.ndarray, x: np.ndarray, f: float) -> tuple[np.ndarray, np.ndarray]:
+    """Moving average over one cycle, time stamped at the centre of each window."""
+    n = max(1, round(1.0 / f / (t[1] - t[0])))
+    c = np.cumsum(np.concatenate([[0.0], x]))
+    return t[n - 1:] - 0.5 * (n - 1) * (t[1] - t[0]), (c[n:] - c[:-n]) / n
+
+
 def _rms_cycle(t: np.ndarray, x: np.ndarray, f: float) -> np.ndarray:
     n = max(1, round(1.0 / f / (t[1] - t[0])))
     c = np.cumsum(np.concatenate([[0.0], x * x]))
@@ -83,9 +91,10 @@ def lcc_frt_metrics(res: Result, t_fault: float, t_clear: float, I_base: float, 
     base_count = float(np.interp(t_fault, t, cfc))
     inc = np.flatnonzero(np.diff(cfc) > 0) + 1
     g_times = [float(t[k]) for k in inc if t[k] >= t_fault]
-    p = res[f"{rec}_DC.V"] * res[f"{rec}_Ls.I"]
-    pre = pre_window or (max(t[0], t_fault - 0.05), t_fault)
-    rec_s = recovery_time(t, p, t_clear, pre) if t[-1] > t_clear else math.nan
+    tp, p = _mean_cycle(t, res[f"{rec}_DC.V"] * res[f"{rec}_Ls.I"], f_Hz)
+    # pre-fault reference: one-cycle averages whose window ends before the fault
+    pre = pre_window or (max(tp[0], t_fault - 0.06), t_fault - 0.5 / f_Hz)
+    rec_s = recovery_time(tp, p, t_clear, pre) if tp[-1] > t_clear else math.nan
     vn = U_ac_kV * 1e3 / math.sqrt(3.0)
     rms = [_rms_cycle(t[after], res[f"{inv_ac}_{ph}.V"][after], f_Hz) / vn for ph in "abc"]
     m: dict[str, Any] = {

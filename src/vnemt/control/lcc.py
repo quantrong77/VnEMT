@@ -53,6 +53,12 @@ Fault handling (F4-07, F4-08):
   counted as failed when the measured gamma (IEC 60633) is below ``gamma_cf_deg``, or when the
   outgoing valve still conducts after its commutating voltage has reversed.
 
+Fast release: the integral gain of a current regulator is multiplied by ``fast_k`` while the
+current error is large (rectifier: ``|e| > fast_e_pu``; inverter: ``e > fast_e_pu``, i.e. the
+current is above the inverter order and CC should hand over to CEA). Around the operating
+point (``e`` near 0) the linear gains, and so the small-signal stability, are unchanged; the
+regulators no longer crawl back from their limits after a fault (recovery, start-up).
+
 Set-point changes (``setpoint`` events) of ``Id_ref_pu`` ramp linearly from the previous value.
 
 VDCOL (four points)::
@@ -190,7 +196,8 @@ class LccRectifierControl(_LccBase):
             alpha = c.fr_alpha_deg
             x[4] = alpha
         else:
-            alpha, x[4] = pi_step(float(x[4]), float(x[5]), e, c.kp_deg, c.ki_deg, dt,
+            ki = c.ki_deg * (c.fast_k if abs(e) > c.fast_e_pu else 1.0)
+            alpha, x[4] = pi_step(float(x[4]), float(x[5]), e, c.kp_deg, ki, dt,
                                   c.alpha_min_deg, c.alpha_max_deg)
         x[5] = e
         return np.array([alpha, id_ord, idf, udf, x[6], x[9]])
@@ -284,7 +291,8 @@ class LccInverterControl(_LccBase):
         gmin = float(np.nanmin(g)) if x[8] >= len(self.valves) else math.nan
         dalpha = self._cfprev(x, u, dt)
         e_cc = idf - id_ord
-        a_cc, i_cc = pi_step(float(x[4]), float(x[5]), e_cc, c.kp_deg, c.ki_deg, dt, lo, hi)
+        ki_cc = c.ki_deg * (c.fast_k if e_cc > c.fast_e_pu else 1.0)
+        a_cc, i_cc = pi_step(float(x[4]), float(x[5]), e_cc, c.kp_deg, ki_cc, dt, lo, hi)
         if math.isnan(gmin):
             alpha, a_g, mode = a_cc, math.nan, 1.0
             x[6] = alpha  # gamma regulator waits at the current output

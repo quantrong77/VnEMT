@@ -141,7 +141,9 @@ def test_frt_metrics_on_synthetic_record() -> None:
     m = lcc_frt_metrics(res, 0.3, 0.4, 2000.0, 5e5, 230.0,
                         criteria={"recovery_90pct_ms": 150, "max_cf": 1})
     assert m["cf_tq"] == 1 and m["cf_gamma"] == 3 and m["cf_episodes"] == 2
-    assert m["recovery_ms"] == pytest.approx(100.0, abs=0.2)
+    # one-cycle average centred on its window: a 0.2 -> 1.0 step at 0.5 s reaches 90 % after
+    # 0.875 of the window, i.e. 0.375 cycle (7.5 ms) after the step itself
+    assert m["recovery_ms"] == pytest.approx(107.5, abs=0.2)
     assert m["Uac_min_pu"] == pytest.approx(1.0, rel=1e-3)
     assert m["pass"] is False and m["failed"] == "max_cf"
     assert _episodes([0.1, 0.12, 0.3], 0.04) == 2

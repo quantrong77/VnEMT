@@ -1,7 +1,8 @@
 """TC-03 and TC-09 (SPEC 10.2): inverter AC dips on the TC-02 system, multiple run.
 
 TC-03 - commutation failures are counted (two criteria: valve t_q and gamma < gamma_cf) and
-CFPREV reduces their number over the 10-30 % depth range.
+CFPREV reduces their number over the 10-30 % depth range; the link recovers to 90 % power
+within 300 ms after the dip (VnEMT design target).
 TC-09 - 50 fault cases (5 depths x 10 points on wave) from one snapshot give a complete metrics
 table; the table does not depend on the number of worker processes.
 """
@@ -34,6 +35,10 @@ def test_tc03_cf_counted_and_reduced_by_cfprev(tmp_path: Path) -> None:
         return sum(r["cf_tq"] + r["cf_gamma"] for r in rs)
 
     assert total(on) < total(off)
+    # VnEMT design target (inside the 100-300 ms range quoted in SPEC 7.4): 90 % power
+    # recovery within 300 ms after clearing with the designed controls (CFPREV, inverter fast
+    # release); without CFPREV the 10 % dip takes about 320 ms
+    assert all(r["recovery_ms"] <= 300.0 for r in on), [r["recovery_ms"] for r in on]
     assert (tmp_path / "sweep.csv").is_file() and (tmp_path / "sweep.md").is_file()
 
 
