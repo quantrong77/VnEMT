@@ -8,3 +8,5 @@ results/
 .mypy_cache/
 .claude/settings.local.json
 .coverage
+# Tài liệu đào tạo tham khảo (bản quyền tác giả) - không đưa vào kho mã
+docs/hvdc_phuongpq2026/
