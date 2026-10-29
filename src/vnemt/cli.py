@@ -1,6 +1,6 @@
-"""Command line interface ``vnemt`` (SPEC-v0.1 section 4.1).
+"""Command line interface ``vnemt`` (SPEC-v0.1 section 4.1, IO-01...IO-07).
 
-Commands: ``run``, ``validate``; ``report`` is reserved for milestone M3.
+Commands: ``run``, ``validate``, ``convert``, ``compare``; ``report`` comes with M3b.
 """
 
 from __future__ import annotations
@@ -55,8 +55,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     elapsed = time.perf_counter() - t0
     written = []
     for fmt in case.formats:
-        ext = {"hdf5": ".h5", "csv": ".csv"}[fmt]
-        written.append(res.export(out_dir / f"{case.name}{ext}", format=fmt))
+        written.append(res.export(out_dir / f"{case.name}{_EXT[fmt]}", format=fmt))
     if args.plot:
         written.append(out_dir / f"{case.name}.png")
         res.plot(path=written[-1])
@@ -68,8 +67,39 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+_EXT = {"hdf5": ".h5", "csv": ".csv", "comtrade": ".cfg", "pscad_out": ".inf", "mat": ".mat"}
+
+
+def cmd_convert(args: argparse.Namespace) -> int:
+    from vnemt.io import read
+
+    res = read(args.src)
+    fmt = args.format
+    opts: dict[str, object] = {}
+    if fmt == "comtrade" or (fmt is None and Path(args.dst).suffix.lower() == ".cfg"):
+        opts = {"rev": args.rev, "fmt": args.data_format}
+    p = res.export(args.dst, format=fmt, **opts)
+    print(f"Đã chuyển {args.src} -> {p} ({len(res.signals)} tín hiệu, {len(res.time)} mẫu).")
+    return 0
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from vnemt.analysis.compare import compare, to_csv, to_markdown
+    from vnemt.io import read
+
+    ref, test = read(args.ref), read(args.test)
+    pairs = dict(m.split("=", 1) for m in args.map) if args.map else None
+    t_range = (args.t0, args.t1) if args.t0 is not None and args.t1 is not None else None
+    rows = compare(ref, test, pairs, t_range=t_range, threshold=args.threshold,
+                   t_clear=args.t_clear)
+    print(to_markdown(rows))
+    if args.csv:
+        print(f"  -> {to_csv(rows, args.csv)}")
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
-    print("Lệnh 'report' chưa triển khai (dự kiến mốc M3).")
+    print("Lệnh 'report' chưa triển khai (dự kiến mốc M3b).")
     return 2
 
 
@@ -88,7 +118,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("paths", nargs="+", help="file hoặc thư mục")
     p.set_defaults(func=cmd_validate)
 
-    p = sub.add_parser("report", help="tạo báo cáo (mốc M3)")
+    p = sub.add_parser("convert", help="chuyển định dạng kết quả (COMTRADE, PSCAD .out, .mat...)")
+    p.add_argument("src", help="file vào: .h5 .cfg .inf/.out .mat .csv")
+    p.add_argument("dst", help="file ra; định dạng theo phần mở rộng nếu không có --format")
+    p.add_argument("--format", choices=sorted(_EXT), help="định dạng ra")
+    p.add_argument("--rev", type=int, default=1999, choices=[1999, 2013], help="bản COMTRADE")
+    p.add_argument("--data-format", default="BINARY",
+                   choices=["ASCII", "BINARY", "BINARY32", "FLOAT32"], help="dạng dữ liệu COMTRADE")
+    p.set_defaults(func=cmd_convert)
+
+    p = sub.add_parser("compare", help="so sánh dạng sóng hai kết quả (IO-06)")
+    p.add_argument("ref", help="kết quả tham chiếu")
+    p.add_argument("test", help="kết quả cần so sánh")
+    p.add_argument("--map", nargs="*", help="cặp tín hiệu ten_ref=ten_test")
+    p.add_argument("--t0", type=float)
+    p.add_argument("--t1", type=float)
+    p.add_argument("--threshold", type=float, help="ngưỡng tính thời điểm vượt")
+    p.add_argument("--t-clear", type=float, help="thời điểm loại trừ sự cố, tính thời gian phục hồi")
+    p.add_argument("--csv", help="ghi bảng so sánh ra CSV")
+    p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("report", help="tạo báo cáo (mốc M3b)")
     p.add_argument("path")
     p.set_defaults(func=cmd_report)
     return ap

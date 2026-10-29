@@ -2,7 +2,7 @@
 
 Cập nhật sau mỗi mốc (SPEC-v0.1 mục 13). Trạng thái: **Đạt** (có mã và kiểm thử đạt tiêu chí), **Một phần**, **Chưa**.
 
-Cập nhật lần cuối: 29/10/2026 — sau mốc M2.
+Cập nhật lần cuối: 29/10/2026 — sau M3a.
 
 ## Lõi giải và chất lượng
 
@@ -48,8 +48,13 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M2.
 | --- | --- | --- | --- | --- |
 | 9.1 | Case YAML + JSON Schema, lỗi theo đường dẫn khóa | `io/schema/case.schema.json`, `io/case_loader.py` | `tests/io/test_case_loader.py` | Một phần — `circuit` kiểm chặt; `ac_systems`, `converter_stations`, `dc_network`, `events` chỉ kiểm kiểu (chặt dần từ M2) |
 | 9.2 | HDF5 + metadata | `io/hdf5.py` | `tests/io/test_results_io.py` | Đạt |
-| IO-07 | CSV, HDF5, `.mat` | `io/csvfile.py`, `io/hdf5.py` | `::test_csv_export` | Một phần — `.mat` ở M3 |
-| IO-01…IO-06 | COMTRADE, PSCAD `.out/.inf`, so sánh dạng sóng | — | — | Chưa (M3) |
+| IO-01 | Xuất COMTRADE 1999/2013, ASCII và nhị phân, kênh analog và số | `io/comtrade.py` | `tests/io/test_exchange.py::test_tc10_comtrade_roundtrip`, `::test_comtrade_status_channels_and_units` | Đạt về khứ hồi (int16: 7,6e-4 % toàn thang < 0,05 %); mở bằng Enerplot và phần mềm phân tích sự cố: **kiểm thủ công** |
+| IO-02 | Nhập COMTRADE 1991/1999/2013 | `io/comtrade.py` | `::test_comtrade_read_1991_ascii_with_two_rates_and_blank_stamps` | Một phần — đọc đủ bốn dạng, nhiều tần số; chưa thử file thật của PSCAD COMTRADE Recorder; phát lại (playback) làm nguồn chưa có (M3b) |
+| IO-03 | Xuất PSCAD `.out/.inf` | `io/pscad.py` | `::test_tc10_pscad_out_roundtrip`, `::test_pscad_channel_to_file_mapping_and_runs` | Đạt về cấu trúc và khứ hồi; mở bằng Enerplot: **kiểm thủ công** |
+| IO-04 | Nhập `.out/.inf`, nhiều file, nhiều lần chạy | `io/pscad.py` | như trên | Một phần — chưa thử file do PSCAD sinh ra |
+| IO-05 | Nhập `.psout` qua `mhi-psout` | `io/pscad.py::read_psout` | `::test_psout_reports_missing_package` | Chưa — chỉ báo lỗi hướng dẫn; cần máy có `mhi-psout` và file mẫu |
+| IO-06 | So sánh dạng sóng | `analysis/compare.py`, `vnemt compare` | `::test_compare_metrics_against_known_differences`, `::test_cli_convert_and_compare` | Đạt |
+| IO-07 | CSV, HDF5, `.mat` | `io/csvfile.py`, `io/hdf5.py`, `io/matfile.py` | `::test_mat_csv_hdf5_roundtrip` | Đạt (mở bằng MATLAB/Octave: kiểm thủ công) |
 
 ## Mô hình dữ liệu dùng chung (SPEC-phan-tich-luoi 2.1)
 
@@ -66,4 +71,5 @@ Cập nhật lần cuối: 29/10/2026 — sau mốc M2.
 | M1 | V1, V2 cho mạch thụ động và chỉnh lưu diode (`cases/m1_diode_bridge.yaml`) | Đạt — Ud sai lệch < 1 % so với công thức, μ sai lệch < 0,5°, hội tụ khi giảm Δt; S-02 đạt theo SPEC r3 |
 | TC-01 | Cầu 6 xung quét α 0–150° (`cases/tc01_bridge6.yaml`) | Đạt — Ud, α, μ, γ, khoảng cách xung, CF |
 | TC-02 | Hệ LCC kiểu CIGRE, cấu hình VnEMT (`cases/tc02_cigre_lcc.yaml`, SPEC r4) | Đạt — Id 1,000 pu, γ 15,00°, α 14,6°, P 983 MW, xác lập ≈ 0,8 s; TC-02b (CIGRE nguyên bản) chờ số liệu gốc |
-| TC-03…TC-10 | | Chưa |
+| TC-10 | Xuất/nhập kết quả | Đạt phần tự động (sai lệch ≤ 7,6e-4 % toàn thang); mở bằng Enerplot cần kiểm thủ công |
+| TC-03…TC-09 | | Chưa |

@@ -28,7 +28,7 @@ from vnemt.systems.builder import build_system
 _PENDING_SECTIONS = {
     "events": "M3",
 }
-_SUPPORTED_FORMATS = ("hdf5", "csv")
+_SUPPORTED_FORMATS = ("hdf5", "csv", "comtrade", "pscad_out", "mat")
 
 
 class Case:
@@ -81,11 +81,8 @@ class Case:
             )
         bad = [f for f in self.formats if f not in _SUPPORTED_FORMATS]
         if bad:
-            raise CaseError(
-                f"định dạng {bad} chưa hỗ trợ (COMTRADE, PSCAD .out, .mat: mốc M3); "
-                f"hiện có {list(_SUPPORTED_FORMATS)}",
-                path="outputs.format", source=src,
-            )
+            raise CaseError(f"định dạng {bad} chưa hỗ trợ; hiện có {list(_SUPPORTED_FORMATS)}",
+                            path="outputs.format", source=src)
 
     @property
     def formats(self) -> list[str]:

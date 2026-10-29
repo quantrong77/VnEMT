@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 
 from vnemt.errors import VnEMTError
 
-EXPORT_FORMATS = ("hdf5", "csv")
+EXPORT_FORMATS = ("hdf5", "csv", "comtrade", "pscad_out", "mat")
 
 
 @dataclass
@@ -39,10 +39,17 @@ class Result:
     def names(self) -> list[str]:
         return list(self.signals)
 
-    def export(self, path: str | Path, format: str | None = None) -> Path:
-        """Write the result; ``format`` defaults to the file extension (.h5 / .csv)."""
+    def export(self, path: str | Path, format: str | None = None, **options: Any) -> Path:
+        """Write the result; ``format`` defaults to the file extension.
+
+        Formats: ``hdf5`` (.h5), ``csv``, ``comtrade`` (.cfg; options ``rev`` 1999/2013,
+        ``fmt`` ASCII/BINARY/BINARY32/FLOAT32), ``pscad_out`` (.inf/.out; option ``run``),
+        ``mat``.
+        """
         p = Path(path)
-        fmt = format or {".h5": "hdf5", ".hdf5": "hdf5", ".csv": "csv"}.get(p.suffix.lower())
+        by_ext = {".h5": "hdf5", ".hdf5": "hdf5", ".csv": "csv", ".cfg": "comtrade",
+                  ".inf": "pscad_out", ".out": "pscad_out", ".mat": "mat"}
+        fmt = format or by_ext.get(p.suffix.lower())
         if fmt == "hdf5":
             from vnemt.io.hdf5 import write_result
 
@@ -51,6 +58,18 @@ class Result:
             from vnemt.io.csvfile import write_csv
 
             return write_csv(self, p)
+        if fmt == "comtrade":
+            from vnemt.io.comtrade import write_comtrade
+
+            return write_comtrade(self, p, **options)
+        if fmt == "pscad_out":
+            from vnemt.io.pscad import write_pscad_out
+
+            return write_pscad_out(self, p, **options)
+        if fmt == "mat":
+            from vnemt.io.matfile import write_mat
+
+            return write_mat(self, p)
         raise VnEMTError(
             f"định dạng xuất '{fmt or p.suffix}' chưa hỗ trợ; hiện có: {', '.join(EXPORT_FORMATS)}"
         )

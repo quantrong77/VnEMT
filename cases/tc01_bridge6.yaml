@@ -34,5 +34,5 @@ controls:
   - {id: PLL, type: pll, inputs: [Sa.V, Sb.V, Sc.V], f0_Hz: 50}
   - {id: EPC, type: epc6, pll: PLL, valves: [T1, T2, T3, T4, T5, T6], alpha_deg: 30}
 outputs:
-  signals: [Sa.V, Sb.V, Sc.V, P.V, N.V, La.I, T1.I, T1.V, EPC.alpha, PLL.theta]
-  format: [hdf5]
+  signals: [Sa.V, Sb.V, Sc.V, P.V, N.V, La.I, T1.I, T1.V, T1.on, EPC.alpha, PLL.theta]
+  format: [hdf5, comtrade, pscad_out]
