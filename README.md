@@ -49,6 +49,7 @@ Hướng dẫn đầy đủ: **[docs/HUONG-DAN.md](docs/HUONG-DAN.md)**.
 | `docs/SPEC-v0.1.md` | Đặc tả lõi EMT – HVDC: yêu cầu, tiêu chí chấp nhận, lộ trình |
 | `docs/SPEC-phan-tich-luoi-v0.1.md` | Đặc tả mở rộng: phân tích lưới, quy hoạch – vận hành, runback/run-up |
 | `docs/HUONG-DAN.md` | Hướng dẫn cài đặt, phát triển và sử dụng |
+| `docs/so-tay-HVDC.md` | Sổ tay tự học HVDC: LCC/VSC, vận hành – bảo trì, lựa chọn thiết bị trạm, tiêu chuẩn IEC hiện hành |
 | `CLAUDE.md` | Quy tắc dự án cho Claude Code |
 | `.claude/agents/` | 13 agent chuyên môn (lõi giải, LCC, VSC/MMC, điều khiển, sự cố, nối đất, điện gió, trao đổi dữ liệu, phân tích lưới, động học, quy hoạch, kiến trúc, kiểm chứng) |
 | `.claude/skills/` | 7 lệnh: `/milestone`, `/new-component`, `/new-case`, `/validate`, `/spec-trace`, `/convert`, `/study` |
