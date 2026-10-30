@@ -1,0 +1,33 @@
+# M1 acceptance case: 6-pulse diode bridge with commutation inductance (alpha = 0).
+#   Ud = (3 sqrt2 / pi) U_LL - (3/pi) w Lc Id ;  cos(mu) = 1 - 2 w Lc Id / (sqrt2 U_LL)
+#   U_LL = 10 kV, Lc = 5 mH (Xc = 1.571 ohm), Ld = 1 H, Rd = 50 ohm
+#   => Ud ~ 13.11 kV, Id ~ 262 A, mu ~ 19.6 deg
+# Valve numbering follows the firing order: D1 a+, D2 c-, D3 b+, D4 a-, D5 c+, D6 b-.
+case:
+  name: m1_diode_bridge
+  description: Cầu chỉnh lưu diode 6 xung có điện cảm chuyển mạch
+  solver: {dt_us: 20, t_end_s: 0.4, method: trapezoidal, cda: true}
+  snapshot: {t_s: 0.3, file: ../results/m1_diode_bridge/snapshot_t0.3.h5}
+base: {U_ac_kV: 10, f_Hz: 50}
+meta:
+  source: "Bài toán chỉnh lưu cầu 3 pha có trùng dẫn, số liệu minh họa"
+circuit:
+  elements:
+    - {id: Va, type: V_ac, nodes: [Sa, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: 0}
+    - {id: Vb, type: V_ac, nodes: [Sb, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: -120}
+    - {id: Vc, type: V_ac, nodes: [Sc, gnd], U_peak_V: 8164.97, f_Hz: 50, phase_deg: 120}
+    - {id: La, type: L, nodes: [Sa, A], L_H: 0.005}
+    - {id: Lb, type: L, nodes: [Sb, B], L_H: 0.005}
+    - {id: Lc, type: L, nodes: [Sc, C], L_H: 0.005}
+    - {id: D1, type: D, nodes: [A, P]}
+    - {id: D3, type: D, nodes: [B, P]}
+    - {id: D5, type: D, nodes: [C, P]}
+    - {id: D4, type: D, nodes: [N, A]}
+    - {id: D6, type: D, nodes: [N, B]}
+    - {id: D2, type: D, nodes: [N, C]}
+    - {id: LD, type: L, nodes: [P, X], L_H: 1.0}
+    - {id: RD, type: R, nodes: [X, N], R_ohm: 50.0}
+outputs:
+  signals: [P.V, N.V, LD.I, La.I, D1.I, D1.V, D1.on]
+  format: [hdf5]
+  decimate: 5

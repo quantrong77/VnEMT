@@ -1,0 +1,21 @@
+# M0 acceptance case: series RLC energised by an ideal DC step (SPEC S-01).
+# Analytic solution (underdamped): alpha = R/2L = 500 1/s, w0 = 1/sqrt(LC) = 3162.3 rad/s
+#   i(t)  = U/(wd*L) * exp(-alpha t) * sin(wd t)
+#   vC(t) = U * [1 - exp(-alpha t) * (cos(wd t) + alpha/wd * sin(wd t))]
+case:
+  name: m0_rlc_series
+  description: Mạch RLC nối tiếp đóng vào nguồn DC 1 kV
+  solver: {dt_us: 1, t_end_s: 0.01, method: trapezoidal, cda: true}
+  init: {mode: zero}
+meta:
+  source: "Bài toán giải tích mạch RLC nối tiếp, số liệu minh họa"
+circuit:
+  elements:
+    - {id: VS, type: V_dc, nodes: [N1, gnd], U_V: 1000.0}
+    - {id: R1, type: R, nodes: [N1, N2], R_ohm: 10.0}
+    - {id: L1, type: L, nodes: [N2, N3], L_H: 0.01}
+    - {id: C1, type: C, nodes: [N3, gnd], C_F: 10.0e-6}
+outputs:
+  signals: [N3.V, L1.I, C1.V, VS.I]
+  format: [hdf5, csv]
+  decimate: 10

@@ -1,0 +1,57 @@
+# TC-03 (SPEC 10.2): controlled voltage dip at the inverter AC bus of the TC-02 system.
+# Commutation failures are counted with two criteria (valve t_q = 400 us, illustrative value;
+# gamma < gamma_cf_deg = 7.2 deg); CFPREV (F4-08) is enabled here. The depth sweep 10-30 %
+# with/without CFPREV is sweeps/tc03_dip.yaml (vnemt sweep), checked by
+# tests/validation/test_tc03_tc09.py. The base system is described in tc02_cigre_lcc.yaml.
+case:
+  name: tc03_inv_dip
+  description: Sụt áp phía nghịch lưu trên hệ TC-02 (TC-03)
+  solver: {dt_us: 20, t_end_s: 1.6, method: trapezoidal, cda: true}
+  snapshot: {t_s: 1.0, file: ../results/tc03_inv_dip/snapshot_1s.h5}
+base: {S_MVA: 1000, U_dc_kV: 500, f_Hz: 50}
+meta:
+  source: "Szechtman, Wess, Thio, A benchmark model for HVDC system studies, IEE 1991; xem trạng thái số liệu ở đầu file"
+ac_systems:
+  - {id: ACR, U_kV: 345, scr: 2.5, angle_deg: 84, U_pu: 1.088, phase_deg: 22.18}
+  - {id: ACI, U_kV: 230, scr: 2.5, angle_deg: 75, U_pu: 0.935, phase_deg: -23.14}
+converter_stations:
+  - id: REC
+    type: lcc_12pulse
+    role: rectifier
+    ac_system: ACR
+    transformer: {S_MVA: 603.73, U1_kV: 345, U2_kV: 213.4, xk_pu: 0.18, tap: 1.01}
+    smoothing_reactor_H: 0.5968
+    valve: {t_q_s: 400.0e-6, snubber: {R_ohm: 5000, C_F: 0.05e-6}}
+    filters:
+      - {type: single_tuned, h: 11, Q_Mvar: 150}
+      - {type: single_tuned, h: 13, Q_Mvar: 150}
+      - {type: high_pass, h: 24, Q_Mvar: 175}
+      - {type: capacitor, Q_Mvar: 150}
+    control: {alpha_min_deg: 5, kp_deg: 60, ki_deg: 2400}
+  - id: INV
+    type: lcc_12pulse
+    role: inverter
+    ac_system: ACI
+    transformer: {S_MVA: 591.79, U1_kV: 230, U2_kV: 209.2, xk_pu: 0.18, tap: 0.989}
+    smoothing_reactor_H: 0.5968
+    valve: {t_q_s: 400.0e-6, snubber: {R_ohm: 5000, C_F: 0.05e-6}}
+    filters:
+      - {type: single_tuned, h: 11, Q_Mvar: 150}
+      - {type: single_tuned, h: 13, Q_Mvar: 150}
+      - {type: high_pass, h: 24, Q_Mvar: 175}
+      - {type: capacitor, Q_Mvar: 150}
+    control: {alpha_min_deg: 110, alpha_max_deg: 165, alpha_start_deg: 140, gamma_ref_deg: 15,
+              fast_k: 8, fast_e_pu: 0.02,
+              kp_deg: 36.1, ki_deg: 2344, kp_gamma: 0.7506, ki_gamma: 30,
+              cfprev: true}
+dc_network:
+  lines:
+    - {id: DCL, from: REC, to: INV, model: t, R_ohm: 5.0, L_H: 1.1936, C_F: 26.0e-6}
+events:
+  - {type: ac_dip, location: ACI, depth_pct: 20, t_s: 1.1, duration_ms: 100}
+outputs:
+  signals: [REC_CTRL.alpha, REC_CTRL.Id, REC_CTRL.Ud, REC_CTRL.Id_ord, INV_CTRL.alpha,
+            INV_CTRL.gamma_min, INV_CTRL.mode, INV_CTRL.Id, REC_DC.V, INV_DC.V, REC_Ls.I,
+            ACR_a.V, ACR_b.V, ACR_c.V, ACI_a.V, ACI_b.V, ACI_c.V]
+  format: [hdf5]
+  decimate: 5

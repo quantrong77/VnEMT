@@ -1,0 +1,61 @@
+{
+ "wheel": "vnemt-0.1.0.dev0-py3-none-any.whl",
+ "cases": [
+  {
+   "file": "m0_rl_ac.yaml",
+   "name": "m0_rl_ac",
+   "description": "Đóng nhánh RL vào nguồn xoay chiều 50 Hz có điện trở trong",
+   "t_end_s": 0.1,
+   "dt_us": 20
+  },
+  {
+   "file": "m0_rlc_series.yaml",
+   "name": "m0_rlc_series",
+   "description": "Mạch RLC nối tiếp đóng vào nguồn DC 1 kV",
+   "t_end_s": 0.01,
+   "dt_us": 1
+  },
+  {
+   "file": "m1_diode_bridge.yaml",
+   "name": "m1_diode_bridge",
+   "description": "Cầu chỉnh lưu diode 6 xung có điện cảm chuyển mạch",
+   "t_end_s": 0.4,
+   "dt_us": 20
+  },
+  {
+   "file": "m4a_bipole.yaml",
+   "name": "m4a_bipole",
+   "description": "Lưỡng cực LCC 12 xung, điện cực hai đầu, đường dây Bergeron hai dây",
+   "t_end_s": 1.5,
+   "dt_us": 20
+  },
+  {
+   "file": "tc01_bridge6.yaml",
+   "name": "tc01_bridge6",
+   "description": "Cầu thyristor 6 xung, quét góc kích (TC-01)",
+   "t_end_s": 0.2,
+   "dt_us": 20
+  },
+  {
+   "file": "tc02_cigre_lcc.yaml",
+   "name": "tc02_cigre_lcc",
+   "description": "Hệ LCC đơn cực 12 xung kiểu CIGRE, cấu hình VnEMT (TC-02)",
+   "t_end_s": 1.5,
+   "dt_us": 20
+  },
+  {
+   "file": "tc03_inv_dip.yaml",
+   "name": "tc03_inv_dip",
+   "description": "Sụt áp phía nghịch lưu trên hệ TC-02 (TC-03)",
+   "t_end_s": 1.6,
+   "dt_us": 20
+  },
+  {
+   "file": "tc04_bipole_oltc.yaml",
+   "name": "tc04_bipole_oltc",
+   "description": "Lưỡng cực LCC có OLTC, nhóm lọc đóng cắt và điều khiển Q (TC-04)",
+   "t_end_s": 1.5,
+   "dt_us": 20
+  }
+ ]
+}
